@@ -13,3 +13,21 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local configuration files (keep these private)
+gradle.properties
+local.properties
+
+# IDE files (personal IDE settings)
+.idea/
+*.iml
+
+# Firebase config - keep google-services.json for team sharing
+# Only ignore if it contains sensitive API keys (uncomment if needed):
+# google-services.json
+
+# Build outputs
+/build
+/captures
+.externalNativeBuild
+.cxx
