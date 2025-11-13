@@ -14,39 +14,62 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import edu.ap.citytrip.data.City
+import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import edu.ap.citytrip.R
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import edu.ap.citytrip.ui.theme.CitytripTheme
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
+    cities: List<City> = emptyList(),
     onSignOut: () -> Unit,
     onCityClick: (City) -> Unit = {},
     onAddCityClick: () -> Unit = {}
 ) {
-    // Sample data - later vervangen door echte data uit database
-    val cities = remember {
-        listOf(
-            City("1", "Antwerpen", null, 5),
-            City("2", "Brugge", null, 3),
-            City("3", "Paris", null, 8),
-            City("4", "London", null, 12),
-            City("5", "Rome", null, 7)
-        )
-    }
 
     Scaffold(
         modifier = modifier,
         topBar = {
+            fun Context.findActivity(): Activity? {
+                var ctx = this
+                while (ctx is ContextWrapper) {
+                    if (ctx is Activity) return ctx
+                    ctx = ctx.baseContext
+                }
+                return null
+            }
+            val activity = LocalContext.current.findActivity()
             TopAppBar(
-                title = { Text("Your Cities", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.title_your_cities), style = MaterialTheme.typography.titleLarge) },
                 actions = {
+                    IconButton(onClick = {
+                        val current = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+                        val nextTag = if (current.startsWith("nl")) "en" else "nl"
+                        val locales = LocaleListCompat.forLanguageTags(nextTag)
+                        AppCompatDelegate.setApplicationLocales(locales)
+                        activity?.recreate()
+                    }) {
+                        Icon(Icons.Default.Language, contentDescription = stringResource(R.string.cd_switch_language))
+                    }
                     IconButton(onClick = onSignOut) {
-                        Icon(Icons.Default.Logout, contentDescription = "Sign out")
+                        Icon(Icons.Default.Logout, contentDescription = stringResource(R.string.cd_sign_out))
                     }
                 }
             )
@@ -102,28 +125,38 @@ fun CityCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Placeholder voor stad afbeelding
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+            // Show image if available, otherwise show placeholder
+            if (!city.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = city.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Placeholder voor stad afbeelding
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                                )
                             )
                         )
+                ) {
+                    // Placeholder icoon
+                    Icon(
+                        imageVector = Icons.Default.LocationCity,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(64.dp),
+                        tint = Color.White.copy(alpha = 0.5f)
                     )
-            ) {
-                // Placeholder icoon
-                Icon(
-                    imageVector = Icons.Default.LocationCity,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(64.dp),
-                    tint = Color.White.copy(alpha = 0.5f)
-                )
+                }
             }
 
             // Gradient overlay voor betere tekst leesbaarheid
@@ -155,7 +188,7 @@ fun CityCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${city.localityCount} Localities",
+                    text = pluralStringResource(R.plurals.localities_count, city.localityCount, city.localityCount),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.9f)
                 )
@@ -186,12 +219,12 @@ fun BottomNavigationBar(
         ) {
             NavigationIconButton(
                 icon = Icons.Default.Home,
-                contentDescription = "Home",
+                contentDescription = stringResource(R.string.nav_home),
                 onClick = onHomeClick
             )
             NavigationIconButton(
                 icon = Icons.Default.Map,
-                contentDescription = "Map",
+                contentDescription = stringResource(R.string.nav_map),
                 onClick = onMapClick
             )
             // Grote Add knop in het midden
@@ -202,18 +235,18 @@ fun BottomNavigationBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Add City",
+                    contentDescription = stringResource(R.string.action_add_city),
                     tint = Color.White
                 )
             }
             NavigationIconButton(
                 icon = Icons.Default.Message,
-                contentDescription = "Messages",
+                contentDescription = stringResource(R.string.nav_messages),
                 onClick = onMessagesClick
             )
             NavigationIconButton(
                 icon = Icons.Default.Person,
-                contentDescription = "Profile",
+                contentDescription = stringResource(R.string.nav_profile),
                 onClick = onProfileClick
             )
         }
@@ -253,13 +286,13 @@ fun EmptyCitiesView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "No cities yet",
+            text = stringResource(R.string.empty_cities_title),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Add your first city to get started",
+            text = stringResource(R.string.empty_cities_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
@@ -267,7 +300,7 @@ fun EmptyCitiesView(
         Button(onClick = onAddCityClick) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Add City")
+            Text(stringResource(R.string.action_add_city))
         }
     }
 }

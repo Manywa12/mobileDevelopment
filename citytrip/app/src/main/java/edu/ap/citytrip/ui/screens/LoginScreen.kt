@@ -16,6 +16,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import edu.ap.citytrip.ui.theme.CitytripTheme
+import androidx.compose.ui.res.stringResource
+import edu.ap.citytrip.R
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun LoginScreen(
@@ -27,6 +30,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -35,7 +39,7 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Welcome Back",
+            text = stringResource(R.string.login_title),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 32.dp)
@@ -45,7 +49,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it; errorMessage = null },
-            label = { Text("Email address") },
+            label = { Text(stringResource(R.string.label_email)) },
             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -59,7 +63,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it; errorMessage = null },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.label_password)) },
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -73,7 +77,7 @@ fun LoginScreen(
             onClick = { /* TODO: Implement forgot password */ },
             modifier = Modifier.align(Alignment.End)
         ) {
-            Text("Forgot password?", color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.forgot_password), color = MaterialTheme.colorScheme.primary)
         }
 
         // Error message
@@ -99,11 +103,11 @@ fun LoginScreen(
                             isLoading = false
                             if (!task.isSuccessful) {
                                 errorMessage = task.exception?.localizedMessage 
-                                    ?: "Login failed. Please check your credentials."
+                                    ?: context.getString(R.string.error_login_failed)
                             }
                         }
                 } else {
-                    errorMessage = "Please fill in email and password."
+                    errorMessage = context.getString(R.string.error_login_missing_fields)
                 }
             },
             modifier = Modifier
@@ -111,7 +115,7 @@ fun LoginScreen(
                 .height(56.dp),
             enabled = !isLoading
         ) {
-            Text(if (isLoading) "Logging in..." else "Login")
+            Text(if (isLoading) stringResource(R.string.action_login_progress) else stringResource(R.string.action_login))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -121,9 +125,9 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
-            Text("Don't have an account? ")
+            Text(stringResource(R.string.login_no_account))
             TextButton(onClick = onRegisterClick) {
-                Text("Register", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.action_register), color = MaterialTheme.colorScheme.primary)
             }
         }
     }

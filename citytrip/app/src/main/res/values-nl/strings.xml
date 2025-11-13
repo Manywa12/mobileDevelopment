@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CityTrip</string>
+    <!-- WelcomeScreen -->
+    <string name="welcome_tagline">Jouw reis om geweldige plekken te ontdekken start hier.</string>
+    <string name="action_login">Inloggen</string>
+    <string name="action_register">Registreren</string>
+    <string name="cd_app_icon">CityTrip</string>
+
+    <!-- HomeScreen -->
+    <string name="title_your_cities">Jouw steden</string>
+    <string name="cd_sign_out">Uitloggen</string>
+    <string name="action_switch_language">Taal wijzigen</string>
+    <string name="cd_switch_language">Wijzig de app-taal</string>
+    <string name="lang_en">EN</string>
+    <string name="lang_nl">NL</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_map">Kaart</string>
+    <string name="nav_messages">Berichten</string>
+    <string name="nav_profile">Profiel</string>
+    <string name="action_add_city">Stad toevoegen</string>
+    <string name="action_back">Terug</string>
+    <string name="action_save_city">Stad opslaan</string>
+    <string name="label_city_name">Stadnaam</string>
+    <string name="placeholder_city_name">bijv. Parijs, Tokyo, New York</string>
+    <string name="upload_city_photo">Upload Stad Foto (Optioneel)</string>
+    <string name="tap_to_select_image">Tik om een afbeelding te selecteren.</string>
+    <string name="empty_cities_title">Voeg een City Toe</string>
+    <string name="empty_cities_subtitle">Voeg je eerste stad toe om te starten</string>
+    <plurals name="localities_count">
+        <item quantity="one">%d locatie</item>
+        <item quantity="other">%d locaties</item>
+    </plurals>
+
+    <!-- LoginScreen -->
+    <string name="login_title">Welkom terug</string>
+    <string name="label_email">E-mailadres</string>
+    <string name="label_password">Wachtwoord</string>
+    <string name="forgot_password">Wachtwoord vergeten?</string>
+    <string name="action_login_progress">Bezig met inloggen...</string>
+    <string name="error_login_failed">Inloggen mislukt. Controleer je gegevens.</string>
+    <string name="error_login_missing_fields">Vul e-mailadres en wachtwoord in.</string>
+    <string name="login_no_account">Nog geen account? </string>
+
+    <!-- RegisterScreen -->
+    <string name="register_title">Maak je account</string>
+    <string name="register_subtitle">Word CityTrip Explorer om geweldige plekken te ontdekken en delen.</string>
+    <string name="label_name">Vul je volledige naam in</string>
+    <string name="label_confirm_password">Voer je wachtwoord opnieuw in</string>
+    <string name="action_register_progress">Bezig met registreren...</string>
+    <string name="register_have_account">Al een account? </string>
+    <string name="toast_registration_success">Registratie succesvol!</string>
+    <string name="error_register_fill_all">Vul alle velden in.</string>
+    <string name="error_register_passwords_mismatch">Wachtwoorden komen niet overeen.</string>
+    <string name="error_register_password_too_short">Wachtwoord moet minstens 6 tekens zijn.</string>
+    <string name="error_register_failed">Registratie mislukt. Probeer het opnieuw.</string>
+    <string name="error_city_name_required">Stadnaam is verplicht</string>
+</resources>

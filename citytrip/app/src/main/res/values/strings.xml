@@ -1,3 +1,62 @@
 <resources>
     <string name="app_name">citytrip</string>
+    <!-- WelcomeScreen -->
+    <string name="welcome_tagline">Your journey to discover amazing places starts here.</string>
+    <string name="action_login">Login</string>
+    <string name="action_register">Register</string>
+    <string name="cd_app_icon">CityTrip</string>
+
+    <!-- HomeScreen -->
+    <string name="title_your_cities">Your Cities</string>
+    <string name="cd_sign_out">Sign out</string>
+    <string name="action_switch_language">Switch language</string>
+    <string name="cd_switch_language">Switch app language</string>
+    <string name="lang_en">EN</string>
+    <string name="lang_nl">NL</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_map">Map</string>
+    <string name="nav_messages">Messages</string>
+    <string name="nav_profile">Profile</string>
+    <string name="action_add_city">Add City</string>
+    <string name="action_back">Back</string>
+    <string name="action_save_city">Save City</string>
+    <string name="label_city_name">City Name</string>
+    <string name="placeholder_city_name">e.g., Paris, Tokyo, New York</string>
+    <string name="upload_city_photo">Upload City Photo (Optional)</string>
+    <string name="tap_to_select_image">Tap to select an image.</string>
+    <string name="empty_cities_title">Add a City</string>
+    <string name="empty_cities_subtitle">Add your first city to get started</string>
+    <plurals name="localities_count">
+        <item quantity="one">%d Locality</item>
+        <item quantity="other">%d Localities</item>
+    </plurals>
+    <string name="city_details_intro">Discover the best of %1$s with curated highlights.</string>
+    <string name="city_details_no_places_title">No places yet</string>
+    <string name="city_details_no_places_subtitle">Start building your itinerary by adding your favourite spots.</string>
+    <string name="action_add_place">Add</string>
+    <string name="action_view_on_map">View on Map</string>
+
+    <!-- LoginScreen -->
+    <string name="login_title">Welcome Back</string>
+    <string name="label_email">Email address</string>
+    <string name="label_password">Password</string>
+    <string name="forgot_password">Forgot password?</string>
+    <string name="action_login_progress">Logging in...</string>
+    <string name="error_login_failed">Login failed. Please check your credentials.</string>
+    <string name="error_login_missing_fields">Please fill in email and password.</string>
+    <string name="login_no_account">Don\'t have an account? </string>
+
+    <!-- RegisterScreen -->
+    <string name="register_title">Create Your Account</string>
+    <string name="register_subtitle">Join CityTrip Explorer to discover and share amazing places.</string>
+    <string name="label_name">Enter your full name</string>
+    <string name="label_confirm_password">Re-enter your password</string>
+    <string name="action_register_progress">Registering...</string>
+    <string name="register_have_account">Already have an account? </string>
+    <string name="toast_registration_success">Registration successful!</string>
+    <string name="error_register_fill_all">Please fill in all fields.</string>
+    <string name="error_register_passwords_mismatch">Passwords do not match.</string>
+    <string name="error_register_password_too_short">Password must be at least 6 characters.</string>
+    <string name="error_register_failed">Registration failed. Please try again.</string>
+    <string name="error_city_name_required">City name is required</string>
 </resources>
