@@ -31,6 +31,11 @@
         <item quantity="one">%d locatie</item>
         <item quantity="other">%d locaties</item>
     </plurals>
+    <string name="city_details_intro">Ontdek het beste van %1$s met onze favoriete plekken.</string>
+    <string name="city_details_no_places_title">Nog geen plekken</string>
+    <string name="city_details_no_places_subtitle">Begin je lijst door een favoriete locatie toe te voegen.</string>
+    <string name="action_add_place">Toevoegen</string>
+    <string name="action_view_on_map">Bekijk op kaart</string>
 
     <!-- LoginScreen -->
     <string name="login_title">Welkom terug</string>
@@ -40,6 +45,9 @@
     <string name="action_login_progress">Bezig met inloggen...</string>
     <string name="error_login_failed">Inloggen mislukt. Controleer je gegevens.</string>
     <string name="error_login_missing_fields">Vul e-mailadres en wachtwoord in.</string>
+    <string name="error_reset_email_required">Vul je e-mailadres in om je wachtwoord te herstellen.</string>
+    <string name="error_reset_failed">Reset e-mail verzenden is mislukt. Probeer opnieuw.</string>
+    <string name="reset_email_sent">Controleer je inbox voor de resetlink.</string>
     <string name="login_no_account">Nog geen account? </string>
 
     <!-- RegisterScreen -->

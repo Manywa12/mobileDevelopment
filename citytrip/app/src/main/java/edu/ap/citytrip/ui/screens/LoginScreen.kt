@@ -30,6 +30,8 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var resetMessage by remember { mutableStateOf<String?>(null) }
+    var isSendingReset by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(
@@ -48,7 +50,7 @@ fun LoginScreen(
         // Email field
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it; errorMessage = null },
+            onValueChange = { email = it; errorMessage = null; resetMessage = null },
             label = { Text(stringResource(R.string.label_email)) },
             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
             singleLine = true,
@@ -62,7 +64,7 @@ fun LoginScreen(
         // Password field
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it; errorMessage = null },
+            onValueChange = { password = it; errorMessage = null; resetMessage = null },
             label = { Text(stringResource(R.string.label_password)) },
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             singleLine = true,
@@ -74,8 +76,29 @@ fun LoginScreen(
 
         // Forgot password link
         TextButton(
-            onClick = { /* TODO: Implement forgot password */ },
-            modifier = Modifier.align(Alignment.End)
+            onClick = {
+                val trimmedEmail = email.trim()
+                if (trimmedEmail.isBlank()) {
+                    errorMessage = context.getString(R.string.error_reset_email_required)
+                    resetMessage = null
+                } else {
+                    errorMessage = null
+                    resetMessage = null
+                    isSendingReset = true
+                    auth.sendPasswordResetEmail(trimmedEmail)
+                        .addOnCompleteListener { task ->
+                            isSendingReset = false
+                            if (task.isSuccessful) {
+                                resetMessage = context.getString(R.string.reset_email_sent)
+                            } else {
+                                errorMessage = task.exception?.localizedMessage
+                                    ?: context.getString(R.string.error_reset_failed)
+                            }
+                        }
+                }
+            },
+            modifier = Modifier.align(Alignment.End),
+            enabled = !isLoading && !isSendingReset
         ) {
             Text(stringResource(R.string.forgot_password), color = MaterialTheme.colorScheme.primary)
         }
@@ -90,6 +113,15 @@ fun LoginScreen(
             )
         }
 
+        if (resetMessage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = resetMessage!!,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         // Login button
@@ -98,6 +130,7 @@ fun LoginScreen(
                 if (email.isNotBlank() && password.isNotBlank()) {
                     isLoading = true
                     errorMessage = null
+                    resetMessage = null
                     auth.signInWithEmailAndPassword(email, password)
                         .addOnCompleteListener { task ->
                             isLoading = false

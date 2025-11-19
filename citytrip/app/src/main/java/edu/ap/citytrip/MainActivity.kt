@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,6 +24,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val appContext = applicationContext
+        val contentResolver = appContext.contentResolver
+
         setContent {
             CitytripTheme {
                 val auth = remember { FirebaseAuth.getInstance() }
@@ -32,7 +36,7 @@ class MainActivity : AppCompatActivity() {
                 var currentScreen by remember { mutableStateOf(AuthScreen.WELCOME) }
                 var showAddCityScreen by remember { mutableStateOf(false) }
                 var cities by remember { mutableStateOf<List<City>>(emptyList()) }
-                var selectedCity by remember { mutableStateOf<City?>(null) }
+                var selectedCityId by rememberSaveable { mutableStateOf<String?>(null) }
                 val currentUserId = auth.currentUser?.uid
 
                 // Functie om cities op te halen uit Firestore
@@ -54,8 +58,10 @@ class MainActivity : AppCompatActivity() {
                                 )
                             }
                             cities = loadedCities
-                            selectedCity?.let { city ->
-                                selectedCity = loadedCities.firstOrNull { it.id == city.id }
+                            selectedCityId?.let { id ->
+                                if (loadedCities.none { it.id == id }) {
+                                    selectedCityId = null
+                                }
                             }
                         }
                 }
@@ -91,8 +97,19 @@ class MainActivity : AppCompatActivity() {
                     val userId = auth.currentUser?.uid ?: return
                     val cityId = UUID.randomUUID().toString()
                     val imageRef = storage.reference.child("cities/$userId/$cityId.jpg")
+
+                    val imageBytes = try {
+                        contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    if (imageBytes == null) {
+                        saveCityToFirestore(cityName, null, cityId)
+                        return
+                    }
                     
-                    imageRef.putFile(imageUri)
+                    imageRef.putBytes(imageBytes)
                         .addOnSuccessListener {
                             // Haal download URL op
                             imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
@@ -135,12 +152,13 @@ class MainActivity : AppCompatActivity() {
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     if (isLoggedIn) {
+                        val selectedCity = cities.firstOrNull { it.id == selectedCityId }
                         if (selectedCity != null) {
                             CityDetailsScreen(
                                 modifier = Modifier.padding(innerPadding),
-                                city = selectedCity!!,
+                                city = selectedCity,
                                 userId = currentUserId.orEmpty(),
-                                onBackClick = { selectedCity = null }
+                                onBackClick = { selectedCityId = null }
                             )
                         } else if (showAddCityScreen) {
                             AddCityScreen(
@@ -162,11 +180,11 @@ class MainActivity : AppCompatActivity() {
                                     auth.signOut()
                                     currentScreen = AuthScreen.WELCOME
                                     showAddCityScreen = false
-                                    selectedCity = null
+                                    selectedCityId = null
                                     cities = emptyList() // Reset cities on sign out
                                 },
                                 onCityClick = { city ->
-                                    selectedCity = city
+                                    selectedCityId = city.id
                                 },
                                 onAddCityClick = {
                                     showAddCityScreen = true

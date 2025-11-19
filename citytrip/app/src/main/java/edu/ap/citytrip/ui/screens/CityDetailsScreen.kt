@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ fun CityDetailsScreen(
     var localities by remember { mutableStateOf<List<Locality>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val isPreview = LocalInspectionMode.current
+    var selectedCategory by remember { mutableStateOf("All") }
 
     LaunchedEffect(userId, city.id, isPreview) {
         if (isPreview) {
@@ -83,13 +85,25 @@ fun CityDetailsScreen(
                         )
                     }.sortedByDescending { it.rating ?: 0.0 }
                     localities = fetched
+                    if (selectedCategory != "All" && fetched.none { it.category == selectedCategory }) {
+                        selectedCategory = "All"
+                    }
                     isLoading = false
                 }
                 .addOnFailureListener {
                     localities = emptyList()
+                    selectedCategory = "All"
                     isLoading = false
                 }
         }
+    }
+
+    val categories = remember(localities) {
+        listOf("All") + localities.mapNotNull { it.category }.distinct()
+    }
+
+    val filteredLocalities = remember(localities, selectedCategory) {
+        if (selectedCategory == "All") localities else localities.filter { it.category == selectedCategory }
     }
 
     Scaffold(
@@ -134,6 +148,16 @@ fun CityDetailsScreen(
                 )
             }
 
+            if (categories.size > 1) {
+                item {
+                    CategoryFilterRow(
+                        categories = categories,
+                        selectedCategory = selectedCategory,
+                        onCategorySelected = { selectedCategory = it }
+                    )
+                }
+            }
+
             when {
                 isLoading -> {
                     item {
@@ -147,7 +171,7 @@ fun CityDetailsScreen(
                         }
                     }
                 }
-                localities.isEmpty() -> {
+                filteredLocalities.isEmpty() -> {
                     item {
                         EmptyLocalitiesView(
                             modifier = Modifier
@@ -158,7 +182,7 @@ fun CityDetailsScreen(
                     }
                 }
                 else -> {
-                    items(localities, key = { it.id }) { locality ->
+                    items(filteredLocalities, key = { it.id }) { locality ->
                         LocalityCard(
                             locality = locality,
                             modifier = Modifier
@@ -168,6 +192,28 @@ fun CityDetailsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CategoryFilterRow(
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        categories.forEach { category ->
+            FilterChip(
+                selected = selectedCategory == category,
+                onClick = { onCategorySelected(category) },
+                label = { Text(category) }
+            )
         }
     }
 }
@@ -346,12 +392,34 @@ private fun LocalityCard(
                         text = locality.name,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
-                    locality.category?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        locality.rating?.let {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = String.format("%.1f", it),
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        locality.category?.let { category ->
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text(category) }
+                            )
+                        }
                     }
                 }
 

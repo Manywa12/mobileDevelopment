@@ -44,6 +44,9 @@
     <string name="action_login_progress">Logging in...</string>
     <string name="error_login_failed">Login failed. Please check your credentials.</string>
     <string name="error_login_missing_fields">Please fill in email and password.</string>
+    <string name="error_reset_email_required">Please enter your email to reset your password.</string>
+    <string name="error_reset_failed">Unable to send reset email. Please try again.</string>
+    <string name="reset_email_sent">Check your inbox for the reset link.</string>
     <string name="login_no_account">Don\'t have an account? </string>
 
     <!-- RegisterScreen -->
