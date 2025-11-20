@@ -36,6 +36,12 @@
     <string name="city_details_no_places_subtitle">Begin je lijst door een favoriete locatie toe te voegen.</string>
     <string name="action_add_place">Toevoegen</string>
     <string name="action_view_on_map">Bekijk op kaart</string>
+    <string name="title_profile">Profiel</string>
+    <string name="profile_default_name">City Explorer</string>
+    <string name="profile_default_email">onbekend@citytrip.app</string>
+    <string name="profile_my_cities">Mijn steden</string>
+    <string name="profile_settings">Instellingen</string>
+    <string name="profile_logout">Uitloggen</string>
 
     <!-- LoginScreen -->
     <string name="login_title">Welkom terug</string>

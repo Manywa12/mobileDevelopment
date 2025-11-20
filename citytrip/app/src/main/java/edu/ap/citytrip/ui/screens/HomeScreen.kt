@@ -34,6 +34,10 @@ import androidx.compose.ui.res.pluralStringResource
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import coil.compose.AsyncImage
 
+enum class BottomNavDestination {
+    HOME, MAP, MESSAGES, PROFILE
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -41,7 +45,10 @@ fun HomeScreen(
     cities: List<City> = emptyList(),
     onSignOut: () -> Unit,
     onCityClick: (City) -> Unit = {},
-    onAddCityClick: () -> Unit = {}
+    onAddCityClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
+    onMessagesClick: () -> Unit = {}
 ) {
 
     Scaffold(
@@ -76,10 +83,11 @@ fun HomeScreen(
         },
         bottomBar = {
             BottomNavigationBar(
+                selectedDestination = BottomNavDestination.HOME,
                 onHomeClick = {},
-                onMapClick = {},
-                onMessagesClick = {},
-                onProfileClick = {},
+                onMapClick = onMapClick,
+                onMessagesClick = onMessagesClick,
+                onProfileClick = onProfileClick,
                 onAddClick = onAddCityClick
             )
         }
@@ -199,6 +207,7 @@ fun CityCard(
 
 @Composable
 fun BottomNavigationBar(
+    selectedDestination: BottomNavDestination,
     onHomeClick: () -> Unit,
     onMapClick: () -> Unit,
     onMessagesClick: () -> Unit,
@@ -220,12 +229,14 @@ fun BottomNavigationBar(
             NavigationIconButton(
                 icon = Icons.Default.Home,
                 contentDescription = stringResource(R.string.nav_home),
-                onClick = onHomeClick
+                onClick = onHomeClick,
+                isSelected = selectedDestination == BottomNavDestination.HOME
             )
             NavigationIconButton(
                 icon = Icons.Default.Map,
                 contentDescription = stringResource(R.string.nav_map),
-                onClick = onMapClick
+                onClick = onMapClick,
+                isSelected = selectedDestination == BottomNavDestination.MAP
             )
             // Grote Add knop in het midden
             FloatingActionButton(
@@ -242,12 +253,14 @@ fun BottomNavigationBar(
             NavigationIconButton(
                 icon = Icons.Default.Message,
                 contentDescription = stringResource(R.string.nav_messages),
-                onClick = onMessagesClick
+                onClick = onMessagesClick,
+                isSelected = selectedDestination == BottomNavDestination.MESSAGES
             )
             NavigationIconButton(
                 icon = Icons.Default.Person,
                 contentDescription = stringResource(R.string.nav_profile),
-                onClick = onProfileClick
+                onClick = onProfileClick,
+                isSelected = selectedDestination == BottomNavDestination.PROFILE
             )
         }
     }
@@ -257,13 +270,15 @@ fun BottomNavigationBar(
 fun NavigationIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isSelected: Boolean
 ) {
     IconButton(onClick = onClick) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
+            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -312,7 +327,10 @@ fun HomeScreenPreview() {
         HomeScreen(
             onSignOut = {},
             onCityClick = {},
-            onAddCityClick = {}
+            onAddCityClick = {},
+            onProfileClick = {},
+            onMapClick = {},
+            onMessagesClick = {}
         )
     }
 }

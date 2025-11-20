@@ -35,6 +35,12 @@
     <string name="city_details_no_places_subtitle">Start building your itinerary by adding your favourite spots.</string>
     <string name="action_add_place">Add</string>
     <string name="action_view_on_map">View on Map</string>
+    <string name="title_profile">Profile</string>
+    <string name="profile_default_name">City Explorer</string>
+    <string name="profile_default_email">unknown@citytrip.app</string>
+    <string name="profile_my_cities">My Cities</string>
+    <string name="profile_settings">Settings</string>
+    <string name="profile_logout">Logout</string>
 
     <!-- LoginScreen -->
     <string name="login_title">Welcome Back</string>
@@ -62,4 +68,9 @@
     <string name="error_register_password_too_short">Password must be at least 6 characters.</string>
     <string name="error_register_failed">Registration failed. Please try again.</string>
     <string name="error_city_name_required">City name is required</string>
+
+    <!-- MessagesScreen -->
+    <string name="title_messages">Messages</string>
+    <string name="search_placeholder">Search...</string>
+    <string name="cd_clear_search">Clear search</string>
 </resources>

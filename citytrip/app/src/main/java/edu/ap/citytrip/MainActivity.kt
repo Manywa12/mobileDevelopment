@@ -16,7 +16,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import edu.ap.citytrip.data.City
 import edu.ap.citytrip.navigation.AuthScreen
-import edu.ap.citytrip.ui.screens.*
+import edu.ap.citytrip.ui.screens.BottomNavDestination
+import edu.ap.citytrip.ui.screens.AddCityScreen
+import edu.ap.citytrip.ui.screens.CityDetailsScreen
+import edu.ap.citytrip.ui.screens.HomeScreen
+import edu.ap.citytrip.ui.screens.LoginScreen
+import edu.ap.citytrip.ui.screens.MessagesScreen
+import edu.ap.citytrip.ui.screens.ProfileScreen
+import edu.ap.citytrip.ui.screens.RegisterScreen
+import edu.ap.citytrip.ui.screens.WelcomeScreen
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import java.util.UUID
 
@@ -37,6 +45,7 @@ class MainActivity : AppCompatActivity() {
                 var showAddCityScreen by remember { mutableStateOf(false) }
                 var cities by remember { mutableStateOf<List<City>>(emptyList()) }
                 var selectedCityId by rememberSaveable { mutableStateOf<String?>(null) }
+                var currentTab by rememberSaveable { mutableStateOf(BottomNavDestination.HOME) }
                 val currentUserId = auth.currentUser?.uid
 
                 // Functie om cities op te halen uit Firestore
@@ -173,23 +182,76 @@ class MainActivity : AppCompatActivity() {
                                 }
                             )
                         } else {
-                            HomeScreen(
-                                modifier = Modifier.padding(innerPadding),
-                                cities = cities,
-                                onSignOut = { 
-                                    auth.signOut()
-                                    currentScreen = AuthScreen.WELCOME
-                                    showAddCityScreen = false
-                                    selectedCityId = null
-                                    cities = emptyList() // Reset cities on sign out
-                                },
-                                onCityClick = { city ->
-                                    selectedCityId = city.id
-                                },
-                                onAddCityClick = {
-                                    showAddCityScreen = true
+                            when (currentTab) {
+                                BottomNavDestination.HOME -> {
+                                    HomeScreen(
+                                        modifier = Modifier.padding(innerPadding),
+                                        cities = cities,
+                                        onSignOut = { 
+                                            auth.signOut()
+                                            currentScreen = AuthScreen.WELCOME
+                                            showAddCityScreen = false
+                                            selectedCityId = null
+                                            cities = emptyList()
+                                        },
+                                        onCityClick = { city ->
+                                            selectedCityId = city.id
+                                        },
+                                        onAddCityClick = {
+                                            showAddCityScreen = true
+                                        },
+                                        onProfileClick = {
+                                            currentTab = BottomNavDestination.PROFILE
+                                        },
+                                        onMapClick = {},
+                                        onMessagesClick = {
+                                            currentTab = BottomNavDestination.MESSAGES
+                                        }
+                                    )
                                 }
-                            )
+                                BottomNavDestination.PROFILE -> {
+                                    ProfileScreen(
+                                        modifier = Modifier.padding(innerPadding),
+                                        userName = auth.currentUser?.displayName,
+                                        userEmail = auth.currentUser?.email,
+                                        photoUrl = auth.currentUser?.photoUrl?.toString(),
+                                        onMyCitiesClick = {
+                                            currentTab = BottomNavDestination.HOME
+                                        },
+                                        onSettingsClick = { /* TODO settings */ },
+                                        onLogoutClick = { 
+                                            auth.signOut()
+                                            currentScreen = AuthScreen.WELCOME
+                                            showAddCityScreen = false
+                                            selectedCityId = null
+                                            cities = emptyList()
+                                            currentTab = BottomNavDestination.HOME
+                                        },
+                                        onHomeClick = { currentTab = BottomNavDestination.HOME },
+                                        onMapClick = {},
+                                        onMessagesClick = {
+                                            currentTab = BottomNavDestination.MESSAGES
+                                        },
+                                        onProfileClick = {},
+                                        onAddClick = { showAddCityScreen = true }
+                                    )
+                                }
+                                BottomNavDestination.MESSAGES -> {
+                                    MessagesScreen(
+                                        modifier = Modifier.padding(innerPadding),
+                                        onHomeClick = { currentTab = BottomNavDestination.HOME },
+                                        onMapClick = {},
+                                        onMessagesClick = {},
+                                        onProfileClick = {
+                                            currentTab = BottomNavDestination.PROFILE
+                                        },
+                                        onAddClick = { showAddCityScreen = true }
+                                    )
+                                }
+                                else -> {
+                                    currentTab = BottomNavDestination.HOME
+                                }
+                            }
                         }
                     } else {
                         when (currentScreen) {
