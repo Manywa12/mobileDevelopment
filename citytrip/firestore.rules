@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    // Public read for all cities
+    match /users/{userId}/cities/{cityId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      match /locations/{locationId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.uid == userId;
+
+        match /reviews/{reviewId} {
+          allow read: if true;
+          allow write: if request.auth != null;
+        }
+      }
+    }
+    // User profile
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

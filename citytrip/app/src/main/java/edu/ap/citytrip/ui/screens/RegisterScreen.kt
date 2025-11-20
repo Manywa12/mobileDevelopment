@@ -17,6 +17,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import androidx.compose.ui.res.stringResource
 import edu.ap.citytrip.R
@@ -136,20 +138,34 @@ fun RegisterScreen(
                     password.length < 6 -> {
                         errorMessage = context.getString(R.string.error_register_password_too_short)
                     }
-                    else -> {
-                        isLoading = true
-                        errorMessage = null
-                        auth.createUserWithEmailAndPassword(email, password)
-                            .addOnCompleteListener { task ->
-                                isLoading = false
-                                if (task.isSuccessful) {
-                                    Toast.makeText(context, context.getString(R.string.toast_registration_success), Toast.LENGTH_SHORT).show()
-                                } else {
-                                    errorMessage = task.exception?.localizedMessage 
-                                        ?: context.getString(R.string.error_register_failed)
-                                }
+            else -> {
+                isLoading = true
+                errorMessage = null
+                auth.createUserWithEmailAndPassword(email, password)
+                    .addOnCompleteListener { task ->
+                        isLoading = false
+                        if (task.isSuccessful) {
+                            val user = task.result?.user
+                            val updates = UserProfileChangeRequest.Builder()
+                                .setDisplayName(name)
+                                .build()
+                            user?.updateProfile(updates)
+                            val firestore = FirebaseFirestore.getInstance()
+                            val uid = user?.uid
+                            if (uid != null) {
+                                val profile = hashMapOf(
+                                    "name" to name,
+                                    "email" to email
+                                )
+                                firestore.collection("users").document(uid).set(profile)
                             }
+                            Toast.makeText(context, context.getString(R.string.toast_registration_success), Toast.LENGTH_SHORT).show()
+                        } else {
+                            errorMessage = task.exception?.localizedMessage 
+                                ?: context.getString(R.string.error_register_failed)
+                        }
                     }
+            }
                 }
             },
             modifier = Modifier

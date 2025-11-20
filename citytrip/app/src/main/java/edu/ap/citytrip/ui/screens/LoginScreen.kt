@@ -15,6 +15,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import androidx.compose.ui.res.stringResource
 import edu.ap.citytrip.R
@@ -137,6 +139,22 @@ fun LoginScreen(
                             if (!task.isSuccessful) {
                                 errorMessage = task.exception?.localizedMessage 
                                     ?: context.getString(R.string.error_login_failed)
+                            } else {
+                                val user = auth.currentUser
+                                val uid = user?.uid
+                                if (uid != null) {
+                                    FirebaseFirestore.getInstance().collection("users").document(uid).get()
+                                        .addOnSuccessListener { doc ->
+                                            val name = doc.data?.get("name") as? String
+                                            if (name != null && name.isNotBlank() && (user.displayName.isNullOrBlank())) {
+                                                user.updateProfile(
+                                                    UserProfileChangeRequest.Builder()
+                                                        .setDisplayName(name)
+                                                        .build()
+                                                )
+                                            }
+                                        }
+                                }
                             }
                         }
                 } else {

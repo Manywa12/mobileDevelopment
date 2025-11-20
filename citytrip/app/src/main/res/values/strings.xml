@@ -69,8 +69,41 @@
     <string name="error_register_failed">Registration failed. Please try again.</string>
     <string name="error_city_name_required">City name is required</string>
 
-    <!-- MessagesScreen -->
-    <string name="title_messages">Messages</string>
-    <string name="search_placeholder">Search...</string>
-    <string name="cd_clear_search">Clear search</string>
+    <!-- Add Location Screen -->
+    <string name="add_location_title">Add Location</string>
+    <string name="current_location_label">Current Location</string>
+    <string name="location_name_label">Location Name</string>
+    <string name="location_name_placeholder">E.g., Eiffel Tower</string>
+    <string name="description_label">Description</string>
+    <string name="description_placeholder">Tell us about this amazing place...</string>
+    <string name="category_label">Category</string>
+    <string name="category_placeholder">Select a category</string>
+    <string name="upload_photo_label">Upload Photo</string>
+    <string name="choose_file_button">Choose File</string>
+    <string name="save_location_button">Save Location</string>
+
+    <!-- Map View Screen -->
+    <string name="map_view_title">Map View</string>
+    <string name="view_details_button">View Details</string>
+
+    <!-- Location Details Screen -->
+    <string name="location_details_title">Eiffel Tower</string>
+    <string name="add_rating_button">Add Rating</string>
+    <string name="distance_from_current_location">%.1f km from your current location</string>
+    <string name="user_reviews_title">User Reviews</string>
+
+    <!-- Add Rating Popup -->
+    <string name="add_your_rating_title">Add Your Rating</string>
+    <string name="share_your_experience">Share your experience with CityTrip Explorer</string>
+    <string name="comments_label">Comments (optional)</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="submit_button">Submit</string>
+
+    <!-- Categories -->
+    <string name="category_restaurant">Restaurant</string>
+    <string name="category_hotel">Hotel</string>
+    <string name="category_sightseeing">Sightseeing</string>
+    <string name="category_museum">Museum</string>
+    <string name="category_park">Park</string>
+    <string name="category_shopping">Shopping</string>
 </resources>

@@ -1,6 +1,7 @@
 package edu.ap.citytrip.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,7 +31,7 @@ import coil.compose.AsyncImage
 import com.google.firebase.firestore.FirebaseFirestore
 import edu.ap.citytrip.R
 import edu.ap.citytrip.data.City
-import edu.ap.citytrip.data.Locality
+import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.ui.theme.CitytripTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,70 +41,63 @@ fun CityDetailsScreen(
     city: City,
     userId: String,
     onBackClick: () -> Unit = {},
-    onAddLocalityClick: () -> Unit = {},
-    onViewOnMapClick: () -> Unit = {}
+    onAddLocationClick: () -> Unit = {},
+    onViewOnMapClick: () -> Unit = {},
+    onLocationClick: (Location) -> Unit = {},
+    onLocationAdded: () -> Unit = {}
 ) {
     val firestore = remember { FirebaseFirestore.getInstance() }
-    var localities by remember { mutableStateOf<List<Locality>>(emptyList()) }
+    var locations by remember { mutableStateOf<List<Location>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val isPreview = LocalInspectionMode.current
     var selectedCategory by remember { mutableStateOf("All") }
 
-    LaunchedEffect(userId, city.id, isPreview) {
+    LaunchedEffect(userId, city.id, city.createdBy, isPreview, onLocationAdded) {
         if (isPreview) {
-            localities = previewLocalities()
+            locations = previewLocations()
             isLoading = false
             return@LaunchedEffect
         }
 
         if (userId.isBlank()) {
-            localities = emptyList()
+            locations = emptyList()
             isLoading = false
         } else {
             isLoading = true
             firestore.collection("users")
-                .document(userId)
+                .document(city.createdBy)
                 .collection("cities")
                 .document(city.id)
-                .collection("localities")
-                .get()
-                .addOnSuccessListener { snapshot ->
-                    val fetched = snapshot.documents.map { doc ->
-                        val data = doc.data ?: emptyMap()
-                        val tags = (data["tags"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                        Locality(
+                .collection("locations")
+                .addSnapshotListener { snapshot, _ ->
+                    val fetched = snapshot?.documents?.mapNotNull { doc ->
+                        val data = doc.data ?: return@mapNotNull null
+                        Location(
                             id = doc.id,
                             name = data["name"] as? String ?: "",
                             imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                            rating = when (val ratingValue = data["rating"]) {
-                                is Number -> ratingValue.toDouble()
-                                else -> null
-                            },
-                            category = (data["category"] as? String)?.takeIf { it.isNotBlank() },
-                            tags = tags,
-                            description = (data["description"] as? String)?.takeIf { it.isNotBlank() }
+                            category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                            description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                            latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
+                            longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
+                            createdBy = data["createdBy"] as? String ?: ""
                         )
-                    }.sortedByDescending { it.rating ?: 0.0 }
-                    localities = fetched
+                    }?.sortedByDescending { it.name } ?: emptyList()
+                    locations = fetched
                     if (selectedCategory != "All" && fetched.none { it.category == selectedCategory }) {
                         selectedCategory = "All"
                     }
                     isLoading = false
                 }
-                .addOnFailureListener {
-                    localities = emptyList()
-                    selectedCategory = "All"
-                    isLoading = false
-                }
         }
     }
 
-    val categories = remember(localities) {
-        listOf("All") + localities.mapNotNull { it.category }.distinct()
+    val categories = remember(locations) {
+        listOf("All") + locations.mapNotNull { it.category }.distinct()
     }
 
-    val filteredLocalities = remember(localities, selectedCategory) {
-        if (selectedCategory == "All") localities else localities.filter { it.category == selectedCategory }
+    val filteredLocations = remember(locations, selectedCategory) {
+        if (selectedCategory == "All") locations else locations.filter { it.category == selectedCategory }
     }
 
     Scaffold(
@@ -129,7 +123,7 @@ fun CityDetailsScreen(
         bottomBar = {
             CityDetailsBottomBar(
                 onViewOnMapClick = onViewOnMapClick,
-                onAddLocalityClick = onAddLocalityClick
+                onAddLocationClick = onAddLocationClick
             )
         }
     ) { paddingValues ->
@@ -144,7 +138,7 @@ fun CityDetailsScreen(
             item {
                 CityMetaSection(
                     cityName = city.name,
-                    placesCount = localities.size
+                    placesCount = locations.size
                 )
             }
 
@@ -171,23 +165,24 @@ fun CityDetailsScreen(
                         }
                     }
                 }
-                filteredLocalities.isEmpty() -> {
+                filteredLocations.isEmpty() -> {
                     item {
-                        EmptyLocalitiesView(
+                        EmptyLocationsView(
                             modifier = Modifier
                                 .padding(horizontal = 24.dp)
                                 .fillMaxWidth(),
-                            onAddLocalityClick = onAddLocalityClick
+                            onAddLocationClick = onAddLocationClick
                         )
                     }
                 }
                 else -> {
-                    items(filteredLocalities, key = { it.id }) { locality ->
-                        LocalityCard(
-                            locality = locality,
+                    items(filteredLocations, key = { it.id }) { location ->
+                        LocationCard(
+                            location = location,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
-                                .fillMaxWidth()
+                                .fillMaxWidth(),
+                            onClick = { onLocationClick(location) }
                         )
                     }
                 }
@@ -315,12 +310,13 @@ private fun CityMetaSection(
 }
 
 @Composable
-private fun LocalityCard(
-    locality: Locality,
-    modifier: Modifier = Modifier
+private fun LocationCard(
+    location: Location,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column {
@@ -329,9 +325,9 @@ private fun LocalityCard(
                     .fillMaxWidth()
                     .height(160.dp)
             ) {
-                if (!locality.imageUrl.isNullOrBlank()) {
+                if (!location.imageUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = locality.imageUrl,
+                        model = location.imageUrl,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -358,25 +354,6 @@ private fun LocalityCard(
                         )
                     }
                 }
-
-                if (locality.rating != null) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(12.dp),
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.7f)
-                    ) {
-                        Text(
-                            text = String.format("%.1f", locality.rating),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
             }
 
             Column(
@@ -389,57 +366,22 @@ private fun LocalityCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = locality.name,
+                        text = location.name,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        locality.rating?.let {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = String.format("%.1f", it),
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                        locality.category?.let { category ->
-                            AssistChip(
-                                onClick = {},
-                                enabled = false,
-                                label = { Text(category) }
-                            )
-                        }
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text(location.category) }
+                        )
                     }
                 }
 
-                if (locality.tags.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        locality.tags.forEach { tag ->
-                            AssistChip(
-                                onClick = {},
-                                enabled = false,
-                                label = { Text(tag) }
-                            )
-                        }
-                    }
-                }
-
-                locality.description?.let {
+                location.description.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodyMedium,
@@ -452,9 +394,9 @@ private fun LocalityCard(
 }
 
 @Composable
-private fun EmptyLocalitiesView(
+private fun EmptyLocationsView(
     modifier: Modifier = Modifier,
-    onAddLocalityClick: () -> Unit
+    onAddLocationClick: () -> Unit
 ) {
     Card(
         modifier = modifier,
@@ -479,7 +421,7 @@ private fun EmptyLocalitiesView(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedButton(onClick = onAddLocalityClick) {
+            OutlinedButton(onClick = onAddLocationClick) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(R.string.action_add_place))
@@ -491,7 +433,7 @@ private fun EmptyLocalitiesView(
 @Composable
 private fun CityDetailsBottomBar(
     onViewOnMapClick: () -> Unit,
-    onAddLocalityClick: () -> Unit
+    onAddLocationClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -508,7 +450,7 @@ private fun CityDetailsBottomBar(
             OutlinedButton(onClick = onViewOnMapClick) {
                 Text(text = stringResource(R.string.action_view_on_map))
             }
-            Button(onClick = onAddLocalityClick) {
+            Button(onClick = onAddLocationClick) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(R.string.action_add_place))
@@ -533,25 +475,19 @@ private fun CityDetailsScreenPreview() {
     }
 }
 
-private fun previewLocalities(): List<Locality> = listOf(
-    Locality(
+private fun previewLocations(): List<Location> = listOf(
+    Location(
         id = "1",
         name = "Cathedral of Our Lady",
         imageUrl = null,
-        rating = 4.8,
         category = "Attraction",
-        tags = listOf("Historic", "Landmark"),
         description = "Marvel at the stunning Gothic architecture towering over Antwerp."
     ),
-    Locality(
+    Location(
         id = "2",
         name = "Museum aan de Stroom (MAS)",
         imageUrl = null,
-        rating = 4.6,
         category = "Museum",
-        tags = listOf("Culture", "Architecture"),
         description = "Discover Antwerp's history, art, and culture in an iconic riverside museum."
     )
 )
-
-

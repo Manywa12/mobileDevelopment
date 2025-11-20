@@ -4,7 +4,8 @@ data class City(
     val id: String,
     val name: String,
     val imageUrl: String? = null,
-    val localityCount: Int = 0
+    val localityCount: Int = 0,
+    val createdBy: String = ""
 )
 
 
