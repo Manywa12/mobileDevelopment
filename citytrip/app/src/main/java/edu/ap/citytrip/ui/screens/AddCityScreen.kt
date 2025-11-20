@@ -36,7 +36,7 @@ import java.io.InputStream
 fun AddCityScreen(
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
-    onSaveCity: (String, Uri?) -> Unit = { _, _ -> }
+    onSaveCity: (String, Uri?, () -> Unit) -> Unit = { _, _, _ -> }
 ) {
     var cityName by remember { mutableStateOf("") }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -212,8 +212,9 @@ fun AddCityScreen(
                         showNameError = true
                     } else {
                         showNameError = false
-                        onSaveCity(cityName.trim(), selectedImageUri)
-                        onBackClick() // Navigate back after saving
+                        onSaveCity(cityName.trim(), selectedImageUri) {
+                            onBackClick()
+                        }
                     }
                 },
                 modifier = Modifier
@@ -241,4 +242,3 @@ fun AddCityScreenPreview() {
         AddCityScreen()
     }
 }
-
