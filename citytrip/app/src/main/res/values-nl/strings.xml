@@ -63,4 +63,42 @@
     <string name="error_register_password_too_short">Wachtwoord moet minstens 6 tekens zijn.</string>
     <string name="error_register_failed">Registratie mislukt. Probeer het opnieuw.</string>
     <string name="error_city_name_required">Stadnaam is verplicht</string>
+
+    <!-- Add Location Screen -->
+    <string name="add_location_title">Locatie toevoegen</string>
+    <string name="current_location_label">Huidige locatie</string>
+    <string name="location_name_label">Naam locatie</string>
+    <string name="location_name_placeholder">bv. Eiffeltoren</string>
+    <string name="description_label">Omschrijving</string>
+    <string name="description_placeholder">Vertel ons over deze geweldige plek…</string>
+    <string name="category_label">Categorie</string>
+    <string name="category_placeholder">Selecteer een categorie</string>
+    <string name="upload_photo_label">Foto uploaden</string>
+    <string name="choose_file_button">Kies bestand</string>
+    <string name="save_location_button">Locatie opslaan</string>
+
+    <!-- Map View Screen -->
+    <string name="map_view_title">Kaartweergave</string>
+    <string name="view_details_button">Details bekijken</string>
+
+    <!-- Location Details Screen -->
+    <string name="location_details_title">Eiffeltoren</string>
+    <string name="add_rating_button">Beoordeling toevoegen</string>
+    <string name="distance_from_current_location">%.1f km van je huidige locatie</string>
+    <string name="user_reviews_title">Gebruikersrecensies</string>
+
+    <!-- Add Rating Popup -->
+    <string name="add_your_rating_title">Voeg je beoordeling toe</string>
+    <string name="share_your_experience">Deel je ervaring met CityTrip Explorer</string>
+    <string name="comments_label">Opmerkingen (optioneel)</string>
+    <string name="cancel_button">Annuleren</string>
+    <string name="submit_button">Verzenden</string>
+
+    <!-- Categories -->
+    <string name="category_restaurant">Restaurant</string>
+    <string name="category_hotel">Hotel</string>
+    <string name="category_sightseeing">Bezienswaardigheid</string>
+    <string name="category_museum">Museum</string>
+    <string name="category_park">Park</string>
+    <string name="category_shopping">Winkel</string>
 </resources>

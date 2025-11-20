@@ -41,7 +41,8 @@ fun HomeScreen(
     cities: List<City> = emptyList(),
     onSignOut: () -> Unit,
     onCityClick: (City) -> Unit = {},
-    onAddCityClick: () -> Unit = {}
+    onAddCityClick: () -> Unit = {},
+    onMapClick: () -> Unit = {}
 ) {
 
     Scaffold(
@@ -77,7 +78,7 @@ fun HomeScreen(
         bottomBar = {
             BottomNavigationBar(
                 onHomeClick = {},
-                onMapClick = {},
+                onMapClick = onMapClick,
                 onMessagesClick = {},
                 onProfileClick = {},
                 onAddClick = onAddCityClick
