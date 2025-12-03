@@ -1,40 +1,38 @@
 package edu.ap.citytrip.data
 
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
+
+// ===========================
+//   DATA CLASSES
+// ===========================
+
+data class User(
+    val uid: String = "",
+    val displayName: String = "",
+    val email: String = "",
+    val photoUrl: String? = null
+)
+
 data class Message(
-    val id: String,
-    val text: String,
-    val timestamp: Long,
-    val senderId: String,
-    val senderName: String,
-    val isRead: Boolean = false,
-    val type: MessageType = MessageType.TEXT
+    val senderId: String = "",
+    val text: String = "",
+    val createdAt: Timestamp? = null
 )
 
-enum class MessageType {
-    TEXT, VOICE, IMAGE
+data class Conversation(
+    val participants: List<String> = emptyList(),
+    val lastMessage: String = "",
+    val lastMessageAt: Timestamp? = null,
+    val createdAt: Timestamp? = null
+)
+
+
+
+// ===========================
+//   HELPER FUNCTIES
+// ===========================
+
+fun getConversationId(uid1: String, uid2: String): String {
+    return listOf(uid1, uid2).sorted().joinToString("_")
 }
-
-data class MessageThread(
-    val id: String,
-    val name: String,
-    val imageUrl: String? = null,
-    val lastMessage: String,
-    val timestamp: Long,
-    val unreadCount: Int = 0,
-    val isGroup: Boolean = false,
-    val lastMessageType: MessageType = MessageType.TEXT,
-    val isRead: Boolean = false
-)
-
-data class Contact(
-    val id: String,
-    val name: String,
-    val imageUrl: String? = null,
-    val status: ContactStatus = ContactStatus.OFFLINE
-)
-
-enum class ContactStatus {
-    ONLINE, AWAY, OFFLINE
-}
-
-

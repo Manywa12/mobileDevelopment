@@ -1,16 +1,23 @@
 package edu.ap.citytrip
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,17 +30,29 @@ import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.navigation.AuthScreen
 import edu.ap.citytrip.ui.screens.BottomNavDestination
 import edu.ap.citytrip.ui.screens.AddCityScreen
+import edu.ap.citytrip.ui.screens.AddLocationScreen
+
 import edu.ap.citytrip.ui.screens.CityDetailsScreen
 import edu.ap.citytrip.ui.screens.HomeScreen
+import edu.ap.citytrip.ui.screens.LocationDetailsScreen
 import edu.ap.citytrip.ui.screens.LoginScreen
-import edu.ap.citytrip.ui.screens.MessagesScreen
+import edu.ap.citytrip.ui.screens.MapViewScreen
+import edu.ap.citytrip.ui.screens.Message.ChatActivity
+import edu.ap.citytrip.ui.screens.Message.MessagesListActivity
+import edu.ap.citytrip.ui.screens.Message.UserListActivity
+
 import edu.ap.citytrip.ui.screens.ProfileScreen
 import edu.ap.citytrip.ui.screens.RegisterScreen
 import edu.ap.citytrip.ui.screens.WelcomeScreen
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import java.util.UUID
+import androidx.activity.ComponentActivity
+import edu.ap.citytrip.ui.screens.BottomNavigationBar
+import edu.ap.citytrip.ui.screens.Message.MessagesScreen
+import edu.ap.citytrip.R
 
-class MainActivity : AppCompatActivity() {
+
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -63,12 +82,28 @@ class MainActivity : AppCompatActivity() {
                 var locationCityIdMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
                 var selectedCityId by rememberSaveable { mutableStateOf<String?>(null) }
                 var selectedLocation by remember { mutableStateOf<Location?>(null) }
+                var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
+                var selectedChatTitle by remember { mutableStateOf("") }
+                var currentTab by rememberSaveable { mutableStateOf(BottomNavDestination.HOME) }
                 val currentUserId = auth.currentUser?.uid
                 var locationListeners by remember { mutableStateOf<List<ListenerRegistration>>(emptyList()) }
 
                 DisposableEffect(isLoggedIn) {
                     val userId = auth.currentUser?.uid
                     if (isLoggedIn && userId != null) {
+                        // Ensure user document exists
+                        val user = auth.currentUser
+                        firestore.collection("users").document(userId).get()
+                            .addOnSuccessListener { doc ->
+                                if (!doc.exists() && user != null) {
+                                    val profile = hashMapOf(
+                                        "name" to (user.displayName ?: user.email?.substringBefore('@') ?: "User"),
+                                        "email" to (user.email ?: "")
+                                    )
+                                    firestore.collection("users").document(userId).set(profile)
+                                }
+                            }
+                        
                         fun loadAllCitiesFallback() {
                             firestore.collection("users")
                                 .get()
@@ -83,21 +118,69 @@ class MainActivity : AppCompatActivity() {
                                                 val citiesLoaded = citySnap.documents.mapNotNull { doc ->
                                                     val data = doc.data
                                                     val imageUrl = data?.get("imageUrl") as? String
-                                                    val countAny = data?.get("localityCount")
-                                                    val count = when (countAny) {
-                                                        is Number -> countAny.toInt()
-                                                        else -> 0
-                                                    }
                                                     City(
                                                         id = doc.id,
                                                         name = data?.get("name") as? String ?: "",
                                                         imageUrl = if (imageUrl.isNullOrBlank()) null else imageUrl,
-                                                        localityCount = count,
+                                                        localityCount = 0, // Will be updated below
                                                         createdBy = userDoc.id
                                                     )
                                                 }
                                                 all.addAll(citiesLoaded)
                                                 cities = all
+                                                
+                                                // Count locations for each city
+                                                val userId = auth.currentUser?.uid
+                                                citiesLoaded.forEach { city ->
+                                                    var countFromOwner = 0
+                                                    var countFromUser = 0
+                                                    var ownerDone = false
+                                                    var userDone = false
+                                                    
+                                                    fun updateCount() {
+                                                        if (ownerDone && (userId == null || userId == city.createdBy || userDone)) {
+                                                            val totalCount = countFromOwner + countFromUser
+                                                            cities = cities.map { c ->
+                                                                if (c.id == city.id) {
+                                                                    c.copy(localityCount = totalCount)
+                                                                } else {
+                                                                    c
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // Count from city owner
+                                                    firestore.collection("users")
+                                                        .document(city.createdBy)
+                                                        .collection("cities")
+                                                        .document(city.id)
+                                                        .collection("locations")
+                                                        .get()
+                                                        .addOnSuccessListener { locationsSnapshot ->
+                                                            countFromOwner = locationsSnapshot.documents.size
+                                                            ownerDone = true
+                                                            updateCount()
+                                                        }
+                                                    
+                                                    // Also count from current user if different
+                                                    if (userId != null && userId != city.createdBy) {
+                                                        firestore.collection("users")
+                                                            .document(userId)
+                                                            .collection("cities")
+                                                            .document(city.id)
+                                                            .collection("locations")
+                                                            .get()
+                                                            .addOnSuccessListener { userLocationsSnapshot ->
+                                                                countFromUser = userLocationsSnapshot.documents
+                                                                    .count { it.data?.get("cityId") == city.id }
+                                                                userDone = true
+                                                                updateCount()
+                                                            }
+                                                    } else {
+                                                        userDone = true
+                                                    }
+                                                }
                                             }
                                     }
                                 }
@@ -115,24 +198,73 @@ class MainActivity : AppCompatActivity() {
                                 val loadedCities = snapshot.documents.mapNotNull { doc ->
                                     val data = doc.data
                                     val imageUrl = data?.get("imageUrl") as? String
-                                    val countAny = data?.get("localityCount")
-                                    val count = when (countAny) {
-                                        is Number -> countAny.toInt()
-                                        else -> 0
-                                    }
                                     val owner = doc.reference.parent.parent?.id ?: ""
                                     City(
                                         id = doc.id,
                                         name = data?.get("name") as? String ?: "",
                                         imageUrl = if (imageUrl.isNullOrBlank()) null else imageUrl,
-                                        localityCount = count,
+                                        localityCount = 0, // Will be updated below
                                         createdBy = owner
                                     )
                                 }
-                                if (loadedCities.isEmpty()) {
-                                    loadAllCitiesFallback()
-                                } else {
+                                
+                                // Calculate actual location counts for each city
+                                if (loadedCities.isNotEmpty()) {
                                     cities = loadedCities
+                                    val userId = auth.currentUser?.uid
+                                    // Count locations for each city
+                                    loadedCities.forEach { city ->
+                                        var countFromOwner = 0
+                                        var countFromUser = 0
+                                        var ownerDone = false
+                                        var userDone = false
+                                        
+                                        fun updateCount() {
+                                            if (ownerDone && (userId == null || userId == city.createdBy || userDone)) {
+                                                val totalCount = countFromOwner + countFromUser
+                                                cities = cities.map { c ->
+                                                    if (c.id == city.id) {
+                                                        c.copy(localityCount = totalCount)
+                                                    } else {
+                                                        c
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Count from city owner
+                                        firestore.collection("users")
+                                            .document(city.createdBy)
+                                            .collection("cities")
+                                            .document(city.id)
+                                            .collection("locations")
+                                            .get()
+                                            .addOnSuccessListener { locationsSnapshot ->
+                                                countFromOwner = locationsSnapshot.documents.size
+                                                ownerDone = true
+                                                updateCount()
+                                            }
+                                        
+                                        // Also count from current user if different
+                                        if (userId != null && userId != city.createdBy) {
+                                            firestore.collection("users")
+                                                .document(userId)
+                                                .collection("cities")
+                                                .document(city.id)
+                                                .collection("locations")
+                                                .get()
+                                                .addOnSuccessListener { userLocationsSnapshot ->
+                                                    countFromUser = userLocationsSnapshot.documents
+                                                        .count { it.data?.get("cityId") == city.id }
+                                                    userDone = true
+                                                    updateCount()
+                                                }
+                                        } else {
+                                            userDone = true
+                                        }
+                                    }
+                                } else {
+                                    loadAllCitiesFallback()
                                 }
                             }
                         onDispose {
@@ -143,6 +275,29 @@ class MainActivity : AppCompatActivity() {
                         cities = emptyList()
                         onDispose { }
                     }
+                }
+
+                fun checkCityExists(cityName: String, onResult: (Boolean) -> Unit) {
+                    val userId = auth.currentUser?.uid ?: run {
+                        onResult(false)
+                        return
+                    }
+                    
+                    firestore.collection("users")
+                        .document(userId)
+                        .collection("cities")
+                        .get()
+                        .addOnSuccessListener { snapshot ->
+                            val exists = snapshot.documents.any { doc ->
+                                val existingName = doc.getString("name") ?: ""
+                                existingName.equals(cityName, ignoreCase = true)
+                            }
+                            onResult(exists)
+                        }
+                        .addOnFailureListener {
+                            Log.e("MainActivity", "Error checking city existence", it)
+                            onResult(false)
+                        }
                 }
 
                 fun saveCityToFirestore(cityName: String, imageUrl: String?, cityId: String = UUID.randomUUID().toString(), onComplete: () -> Unit) {
@@ -161,43 +316,82 @@ class MainActivity : AppCompatActivity() {
                         .addOnSuccessListener { onComplete() }
                 }
 
-                fun uploadImageAndSaveCity(cityName: String, imageUri: Uri?, onComplete: () -> Unit) {
-                    if (imageUri == null) {
-                        saveCityToFirestore(cityName, null, onComplete = onComplete)
-                        return
+                fun uploadImageAndSaveCity(cityName: String, imageUri: Uri?, onComplete: () -> Unit, onError: (String) -> Unit) {
+                    // Check if city already exists
+                    checkCityExists(cityName) { exists ->
+                        if (exists) {
+                            onError(getString(R.string.error_city_already_exists))
+                            return@checkCityExists
+                        }
+                        
+                        if (imageUri == null) {
+                            saveCityToFirestore(cityName, null, onComplete = onComplete)
+                            return@checkCityExists
+                        }
+
+                        val userId = auth.currentUser?.uid ?: return@checkCityExists
+                        val cityId = UUID.randomUUID().toString()
+                        val imageRef = storage.reference.child("cities/$userId/$cityId.jpg")
+
+                        val imageBytes = try {
+                            contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        if (imageBytes == null) {
+                            saveCityToFirestore(cityName, null, cityId, onComplete)
+                            return@checkCityExists
+                        }
+                        
+                        imageRef.putBytes(imageBytes)
+                            .addOnSuccessListener {
+                                imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                                    Log.d("MainActivity", "City image uploaded successfully: $downloadUri")
+                                    saveCityToFirestore(cityName, downloadUri.toString(), cityId, onComplete)
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("MainActivity", "Failed to get download URL for city image", e)
+                                    Toast.makeText(this@MainActivity, "Fout bij ophalen image URL: ${e.message}", Toast.LENGTH_LONG).show()
+                                    saveCityToFirestore(cityName, null, cityId, onComplete)
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("MainActivity", "Failed to upload city image", e)
+                                Toast.makeText(this@MainActivity, "Fout bij uploaden image: ${e.message}", Toast.LENGTH_LONG).show()
+                                saveCityToFirestore(cityName, null, cityId, onComplete)
+                            }
                     }
+                }
 
-                    val userId = auth.currentUser?.uid ?: return
-                    val cityId = UUID.randomUUID().toString()
-                    val imageRef = storage.reference.child("cities/$userId/$cityId.jpg")
-
-                    val imageBytes = try {
-                        contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
-                    } catch (e: Exception) {
-                        null
-                    }
-
-                    if (imageBytes == null) {
-                        saveCityToFirestore(cityName, null, cityId, onComplete)
+                fun checkLocationExists(cityId: String, locationName: String, onResult: (Boolean) -> Unit) {
+                    val userId = auth.currentUser?.uid ?: run {
+                        onResult(false)
                         return
                     }
                     
-                    imageRef.putBytes(imageBytes)
-                        .addOnSuccessListener {
-                            imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                                saveCityToFirestore(cityName, downloadUri.toString(), cityId, onComplete)
+                    firestore.collection("users")
+                        .document(userId)
+                        .collection("cities")
+                        .document(cityId)
+                        .collection("locations")
+                        .get()
+                        .addOnSuccessListener { snapshot ->
+                            val exists = snapshot.documents.any { doc ->
+                                val existingName = doc.getString("name") ?: ""
+                                existingName.equals(locationName, ignoreCase = true)
                             }
-                            .addOnFailureListener {
-                                saveCityToFirestore(cityName, null, cityId, onComplete)
-                            }
+                            onResult(exists)
                         }
                         .addOnFailureListener {
-                            saveCityToFirestore(cityName, null, cityId, onComplete)
+                            Log.e("MainActivity", "Error checking location existence", it)
+                            onResult(false)
                         }
                 }
 
                 fun saveLocationToFirestore(
                     cityId: String,
+                    cityOwnerId: String,
                     locationName: String,
                     description: String,
                     category: Category,
@@ -206,7 +400,14 @@ class MainActivity : AppCompatActivity() {
                     longitude: Double,
                     onComplete: () -> Unit
                 ) {
-                    val userId = auth.currentUser?.uid ?: return
+                    val userId = auth.currentUser?.uid
+                    if (userId == null) {
+                        Log.e("MainActivity", "User not logged in in saveLocationToFirestore")
+                        Toast.makeText(this@MainActivity, "Je bent niet ingelogd", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    
+                    Log.d("MainActivity", "saveLocationToFirestore: cityId=$cityId, cityOwnerId=$cityOwnerId, userId=$userId")
                     val locationId = UUID.randomUUID().toString()
                     val locationData = hashMapOf(
                         "name" to locationName,
@@ -217,114 +418,128 @@ class MainActivity : AppCompatActivity() {
                         "longitude" to longitude,
                         "createdBy" to userId,
                         "cityId" to cityId,
+                        "cityOwnerId" to cityOwnerId, // Keep track of the original city owner
                         "createdAt" to FieldValue.serverTimestamp()
                     )
 
-                    val cityRef = firestore.collection("users")
+                    // Save location under the current user who added it, not the city owner
+                    val userRef = firestore.collection("users")
                         .document(userId)
                         .collection("cities")
                         .document(cityId)
+                        .collection("locations")
+                        .document(locationId)
 
-                    firestore.runTransaction { transaction ->
-                        transaction.set(cityRef.collection("locations").document(locationId), locationData)
-                        transaction.update(cityRef, "localityCount", FieldValue.increment(1))
-                        null
-                    }
-                        .addOnSuccessListener { onComplete() }
-                        .addOnFailureListener {
-                            cityRef.collection("locations").document(locationId)
-                                .set(locationData)
-                                .addOnSuccessListener { onComplete() }
+                    userRef.set(locationData)
+                        .addOnSuccessListener { 
+                            Log.d("MainActivity", "Location saved successfully under user $userId")
+                            Toast.makeText(this@MainActivity, "Locatie opgeslagen!", Toast.LENGTH_SHORT).show()
+                            onComplete() 
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("MainActivity", "Failed to save location", e)
+                            Toast.makeText(this@MainActivity, "Fout bij opslaan: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                 }
 
                 fun uploadImageAndSaveLocation(
                     cityId: String,
+                    cityOwnerId: String,
                     locationName: String,
                     description: String,
                     category: Category,
                     imageUri: Uri?,
                     latitude: Double,
                     longitude: Double,
-                    onComplete: () -> Unit
+                    onComplete: () -> Unit,
+                    onError: (String) -> Unit
                 ) {
-                    if (imageUri == null) {
-                        saveLocationToFirestore(cityId, locationName, description, category, null, latitude, longitude, onComplete)
+                    Log.d("MainActivity", "uploadImageAndSaveLocation called: name=$locationName, cityId=$cityId")
+                    val userId = auth.currentUser?.uid
+                    if (userId == null) {
+                        Log.e("MainActivity", "User not logged in, cannot save location")
+                        Toast.makeText(this@MainActivity, "Je bent niet ingelogd", Toast.LENGTH_SHORT).show()
                         return
                     }
 
-                    val userId = auth.currentUser?.uid ?: return
-                    val locationId = UUID.randomUUID().toString()
-                    val imageRef = storage.reference.child("locations/$userId/$cityId/$locationId.jpg")
+                    // Check if location already exists
+                    checkLocationExists(cityId, locationName) { exists ->
+                        if (exists) {
+                            onError(getString(R.string.error_location_already_exists))
+                            return@checkLocationExists
+                        }
 
-                    imageRef.putFile(imageUri)
-                        .addOnSuccessListener {
-                            imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                                saveLocationToFirestore(cityId, locationName, description, category, downloadUri.toString(), latitude, longitude, onComplete)
-                            }
-                            .addOnFailureListener {
-                                saveLocationToFirestore(cityId, locationName, description, category, null, latitude, longitude, onComplete)
-                            }
+                        if (imageUri == null) {
+                            Log.d("MainActivity", "No image, saving directly to Firestore")
+                            saveLocationToFirestore(cityId, cityOwnerId, locationName, description, category, null, latitude, longitude, onComplete)
+                            return@checkLocationExists
                         }
-                        .addOnFailureListener {
-                            saveLocationToFirestore(cityId, locationName, description, category, null, latitude, longitude, onComplete)
-                        }
+
+                        val locationId = UUID.randomUUID().toString()
+                        // Store image under the current user who is adding the location
+                        val imageRef = storage.reference.child("locations/$userId/$cityId/$locationId.jpg")
+
+                        imageRef.putFile(imageUri)
+                            .addOnSuccessListener {
+                                Log.d("MainActivity", "Image uploaded successfully")
+                                imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                                    Log.d("MainActivity", "Got download URL: $downloadUri")
+                                    saveLocationToFirestore(cityId, cityOwnerId, locationName, description, category, downloadUri.toString(), latitude, longitude, onComplete)
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("MainActivity", "Failed to get download URL", e)
+                                    saveLocationToFirestore(cityId, cityOwnerId, locationName, description, category, null, latitude, longitude, onComplete)
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("MainActivity", "Failed to upload image", e)
+                                saveLocationToFirestore(cityId, cityOwnerId, locationName, description, category, null, latitude, longitude, onComplete)
+                            }
+                    }
                 }
 
                 fun fetchAllLocations() {
-                    val userId = auth.currentUser?.uid ?: return
                     val allLocations = mutableListOf<Location>()
                     val idMap = mutableMapOf<String, String>()
-                    firestore.collection("users")
-                        .document(userId)
-                        .collection("cities")
+                    firestore.collectionGroup("locations")
                         .get()
-                        .addOnSuccessListener { citiesSnapshot ->
-                            citiesSnapshot.documents.forEach { cityDoc ->
-                                firestore.collection("users")
-                                    .document(userId)
-                                    .collection("cities")
-                                    .document(cityDoc.id)
-                                    .collection("locations")
-                                    .get()
-                                    .addOnSuccessListener { locationsSnapshot ->
-                                        locationsSnapshot.documents.forEach { locDoc ->
-                                            val data = locDoc.data ?: emptyMap()
-                                            val latAny = data["latitude"]
-                                            val lonAny = data["longitude"]
-                                            val latitude = when (latAny) {
-                                                is Number -> latAny.toDouble()
-                                                else -> 0.0
-                                            }
-                                            val longitude = when (lonAny) {
-                                                is Number -> lonAny.toDouble()
-                                                else -> 0.0
-                                            }
-                                            val loc = Location(
-                                                id = locDoc.id,
-                                                name = data["name"] as? String ?: "",
-                                                description = data["description"] as? String ?: "",
-                                                category = data["category"] as? String ?: "",
-                                                latitude = latitude,
-                                                longitude = longitude,
-                                                imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                                createdBy = userId
-                                            )
-                                            allLocations.add(loc)
-                                            idMap[locDoc.id] = cityDoc.id
-                                        }
-                                        locationsForMap = allLocations
-                                        locationCityIdMap = idMap
-                                    }
+                        .addOnSuccessListener { locationsSnapshot ->
+                            locationsSnapshot.documents.forEach { locDoc ->
+                                val data = locDoc.data ?: emptyMap()
+                                val latAny = data["latitude"]
+                                val lonAny = data["longitude"]
+                                val latitude = when (latAny) {
+                                    is Number -> latAny.toDouble()
+                                    else -> 0.0
+                                }
+                                val longitude = when (lonAny) {
+                                    is Number -> lonAny.toDouble()
+                                    else -> 0.0
+                                }
+                                val cityRef = locDoc.reference.parent.parent
+                                val cityId = cityRef?.id ?: ""
+                                val loc = Location(
+                                    id = locDoc.id,
+                                    name = data["name"] as? String ?: "",
+                                    description = data["description"] as? String ?: "",
+                                    category = data["category"] as? String ?: "",
+                                    latitude = latitude,
+                                    longitude = longitude,
+                                    imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
+                                    createdBy = data["createdBy"] as? String ?: ""
+                                )
+                                allLocations.add(loc)
+                                idMap[locDoc.id] = cityId
                             }
+                            locationsForMap = allLocations
+                            locationCityIdMap = idMap
                         }
                 }
 
                 fun fetchLocationsForCity(cityId: String) {
-                    val userId = auth.currentUser?.uid ?: return
                     val idMap = mutableMapOf<String, String>()
                     firestore.collectionGroup("locations")
-                        .whereEqualTo("createdBy", userId)
+                        .whereEqualTo("cityId", cityId)
                         .get()
                         .addOnSuccessListener { locationsSnapshot ->
                             val locs = locationsSnapshot.documents.mapNotNull { locDoc ->
@@ -372,23 +587,25 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        BottomNavigationBar(
+                            selectedDestination = currentTab,
+                            onHomeClick = { currentTab = BottomNavDestination.HOME },
+                            onMapClick = {
+                                fetchAllLocations()
+                                showMapViewScreen = true
+                            },
+                            onMessagesClick = { currentTab = BottomNavDestination.MESSAGES },
+                            onProfileClick = { currentTab = BottomNavDestination.PROFILE },
+                            onAddClick = { showAddCityScreen = true }
+                        )
+                    }
+                ) { innerPadding ->
                     if (isLoggedIn) {
                         val selectedCity = cities.firstOrNull { it.id == selectedCityId }
                         when {
-                            selectedLocation != null -> {
-                                val loc = selectedLocation!!
-                                val cid = locationCityIdMap[loc.id] ?: selectedCity?.id ?: ""
-                                LocationDetailsScreen(
-                                    location = loc,
-                                    onBackClick = { selectedLocation = null },
-                                    onViewOnMapClick = {
-                                        fetchAllLocations()
-                                        showMapViewScreen = true
-                                    },
-                                    cityId = cid
-                                )
-                            }
                             showMapViewScreen -> {
                                 MapViewScreen(
                                     locations = locationsForMap,
@@ -399,13 +616,48 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 )
                             }
+                            selectedLocation != null -> {
+                                val loc = selectedLocation!!
+                                val cid = locationCityIdMap[loc.id] ?: selectedCity?.id ?: ""
+                                LocationDetailsScreen(
+                                    location = loc,
+                                    onBackClick = { selectedLocation = null },
+                                    onViewOnMapClick = {
+                                        fetchAllLocations()
+                                        selectedLocation = null // Reset selected location first
+                                        showMapViewScreen = true
+                                    },
+                                    cityId = cid
+                                )
+                            }
+                            selectedChatId != null -> {
+                                val context = LocalContext.current
+
+                                // Start legacy ChatActivity
+                                LaunchedEffect(selectedChatId) {
+                                    val intent = Intent(context, ChatActivity::class.java).apply {
+                                        putExtra("chatId", selectedChatId)
+                                        putExtra("chatTitle", selectedChatTitle)
+                                    }
+                                    context.startActivity(intent)
+
+                                    // Reset Compose state
+                                    selectedChatId = null
+                                    selectedChatTitle = ""
+                                }
+
+                                // Optional: leeg scherm tijdens navigatie
+                                Box(Modifier.fillMaxSize()) {}
+                            }
                             selectedCity != null && showAddLocationScreen -> {
+                                val city = selectedCity!!
                                 AddLocationScreen(
                                     modifier = Modifier.padding(innerPadding),
                                     onBackClick = { showAddLocationScreen = false },
-                                    onSaveLocation = { name, description, category, imageUri, latitude, longitude ->
+                                    onSaveLocation = { name, description, category, imageUri, latitude, longitude, onError ->
                                         uploadImageAndSaveLocation(
-                                            cityId = selectedCity.id,
+                                            cityId = city.id,
+                                            cityOwnerId = city.createdBy,
                                             locationName = name,
                                             description = description,
                                             category = category,
@@ -416,20 +668,22 @@ class MainActivity : AppCompatActivity() {
                                                 showAddLocationScreen = false
                                                 // trigger city details refresh
                                                 selectedCityId = selectedCityId
-                                            }
+                                            },
+                                            onError = onError
                                         )
                                     }
                                 )
                             }
                             selectedCity != null -> {
+                                val city = selectedCity!!
                                 CityDetailsScreen(
                                     modifier = Modifier.padding(innerPadding),
-                                    city = selectedCity,
+                                    city = city,
                                     userId = currentUserId.orEmpty(),
                                     onBackClick = { selectedCityId = null },
                                     onAddLocationClick = { showAddLocationScreen = true },
                                     onViewOnMapClick = {
-                                        fetchLocationsForCity(selectedCity.id)
+                                        fetchLocationsForCity(city.id)
                                         showMapViewScreen = true
                                     },
                                     onLocationClick = { loc ->
@@ -445,35 +699,80 @@ class MainActivity : AppCompatActivity() {
                                 AddCityScreen(
                                     modifier = Modifier.padding(innerPadding),
                                     onBackClick = { showAddCityScreen = false },
-                                    onSaveCity = { name, imageUri, onComplete ->
-                                        uploadImageAndSaveCity(name, imageUri) {
+                                    onSaveCity = { name, imageUri, onComplete, onError ->
+                                        uploadImageAndSaveCity(name, imageUri, {
                                             onComplete()
-                                        }
+                                        }, onError)
                                     }
                                 )
                             }
                             else -> {
-                                HomeScreen(
-                                    modifier = Modifier.padding(innerPadding),
-                                    cities = cities,
-                                    onSignOut = { 
-                                        auth.signOut()
-                                        currentScreen = AuthScreen.WELCOME
-                                        showAddCityScreen = false
-                                        selectedCityId = null
-                                        cities = emptyList()
-                                    },
-                                    onCityClick = { city ->
-                                        selectedCityId = city.id
-                                    },
-                                    onAddCityClick = {
-                                        showAddCityScreen = true
-                                    },
-                                    onMapClick = {
-                                        fetchAllLocations()
-                                        showMapViewScreen = true
+                                when (currentTab) {
+                                    BottomNavDestination.HOME -> {
+                                        HomeScreen(
+                                            modifier = Modifier.padding(innerPadding),
+                                            cities = cities,
+                                            onSignOut = {
+                                                auth.signOut()
+                                                currentScreen = AuthScreen.WELCOME
+                                                showAddCityScreen = false
+                                                selectedCityId = null
+                                                cities = emptyList()
+                                                selectedChatId = null
+                                                selectedChatTitle = ""
+                                                currentTab = BottomNavDestination.HOME
+                                            },
+                                            onCityClick = { city ->
+                                                selectedCityId = city.id
+                                            },
+                                            onAddCityClick = { showAddCityScreen = true },
+                                            onHomeClick = { currentTab = BottomNavDestination.HOME },
+                                            onMapClick = {
+                                                fetchAllLocations()
+                                                showMapViewScreen = true
+                                            },
+                                            onMessagesClick = { currentTab = BottomNavDestination.MESSAGES },
+                                            onProfileClick = { currentTab = BottomNavDestination.PROFILE }
+                                        )
                                     }
-                                )
+                                    BottomNavDestination.MESSAGES -> {
+                                        MessagesScreen(
+                                            modifier = Modifier.padding(innerPadding),
+                                            showBackButton = false
+                                        )
+                                    }
+                                    BottomNavDestination.PROFILE -> {
+                                        ProfileScreen(
+                                            modifier = Modifier.padding(innerPadding),
+                                            userName = auth.currentUser?.displayName,
+                                            userEmail = auth.currentUser?.email,
+                                            photoUrl = auth.currentUser?.photoUrl?.toString(),
+                                            onMyCitiesClick = { currentTab = BottomNavDestination.HOME },
+                                            onSettingsClick = { /* TODO */ },
+                                            onLogoutClick = {
+                                                auth.signOut()
+                                                currentScreen = AuthScreen.WELCOME
+                                                showAddCityScreen = false
+                                                selectedCityId = null
+                                                cities = emptyList()
+                                                selectedChatId = null
+                                                selectedChatTitle = ""
+                                                currentTab = BottomNavDestination.HOME
+                                            },
+                                            onHomeClick = { currentTab = BottomNavDestination.HOME },
+                                            onMapClick = {
+                                                fetchAllLocations()
+                                                showMapViewScreen = true
+                                            },
+                                            onMessagesClick = { currentTab = BottomNavDestination.MESSAGES },
+                                            onProfileClick = {},
+                                            onAddClick = { showAddCityScreen = true }
+                                        )
+                                    }
+                                    else -> {
+                                        currentTab = BottomNavDestination.HOME
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -499,4 +798,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    // LegacyMessagesEntry no longer needed now that MessagesScreen is integrated with bottom navigation.
 }

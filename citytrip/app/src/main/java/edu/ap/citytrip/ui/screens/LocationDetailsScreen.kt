@@ -1,6 +1,7 @@
 package edu.ap.citytrip.ui.screens
 
 import android.content.Context
+import android.location.Geocoder
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import edu.ap.citytrip.R
 import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.data.Review
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,10 +46,15 @@ fun LocationDetailsScreen(
     val firestore = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
     var distance by remember { mutableStateOf<Float?>(null) }
+    var address by remember { mutableStateOf<String?>(null) }
+    var isLoadingAddress by remember { mutableStateOf(false) }
+    var cityOwnerId by remember { mutableStateOf<String?>(null) }
+    var reloadReviewsTrigger by remember { mutableStateOf(0) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    LaunchedEffect(location) {
+    // Load distance and reviews
+    LaunchedEffect(location, cityId, reloadReviewsTrigger) {
         try {
             fusedLocationClient.lastLocation.addOnSuccessListener { userLocation: android.location.Location? ->
                 if (userLocation != null) {
@@ -61,17 +69,156 @@ fun LocationDetailsScreen(
             // Handle missing location permissions
         }
 
-        firestore.collection("users")
-            .document(location.createdBy)
-            .collection("cities")
-            .document(cityId)
-            .collection("locations")
-            .document(location.id)
-            .collection("reviews")
-            .get()
-            .addOnSuccessListener { snapshot ->
-                reviews = snapshot.toObjects(Review::class.java)
+        // Load reviews - try multiple paths where the location might be stored
+        val allReviews = mutableListOf<Review>()
+        var completed = 0
+        val pathsToTry = mutableListOf<com.google.firebase.firestore.DocumentReference>()
+        
+        // Try current user's path
+        val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (currentUserId != null) {
+            pathsToTry.add(
+                firestore.collection("users")
+                    .document(currentUserId)
+                    .collection("cities")
+                    .document(cityId)
+                    .collection("locations")
+                    .document(location.id)
+            )
+        }
+        
+        // Try location creator's path
+        if (location.createdBy.isNotBlank() && location.createdBy != currentUserId) {
+            pathsToTry.add(
+                firestore.collection("users")
+                    .document(location.createdBy)
+                    .collection("cities")
+                    .document(cityId)
+                    .collection("locations")
+                    .document(location.id)
+            )
+        }
+        
+        // Function to load reviews from paths
+        fun loadReviewsFromPaths(paths: List<com.google.firebase.firestore.DocumentReference>) {
+            val uniquePaths = paths.distinctBy { it.path }
+            val total = uniquePaths.size
+            
+            if (total == 0) {
+                reviews = emptyList()
+                return
             }
+            
+            completed = 0
+            allReviews.clear()
+            
+            uniquePaths.forEach { locationRef ->
+                locationRef.collection("reviews")
+                    .get()
+                    .addOnSuccessListener { reviewsSnapshot ->
+                        android.util.Log.d("LocationDetails", "Found ${reviewsSnapshot.documents.size} reviews at path: ${locationRef.path}")
+                        val loadedReviews = reviewsSnapshot.documents.mapNotNull { doc ->
+                            try {
+                                val data = doc.data ?: return@mapNotNull null
+                                Review(
+                                    id = doc.id,
+                                    rating = (data["rating"] as? Number)?.toFloat() ?: 0f,
+                                    comment = data["comment"] as? String ?: "",
+                                    userId = data["userId"] as? String ?: "",
+                                    userName = data["userName"] as? String ?: "User",
+                                    createdAt = doc.getDate("createdAt")
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("LocationDetails", "Error parsing review: ${e.message}")
+                                null
+                            }
+                        }
+                        allReviews.addAll(loadedReviews)
+                        completed++
+                        
+                        if (completed == total) {
+                            // Remove duplicates based on review ID
+                            val uniqueReviews = allReviews.distinctBy { it.id }
+                            android.util.Log.d("LocationDetails", "Total unique reviews: ${uniqueReviews.size}")
+                            reviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        android.util.Log.e("LocationDetails", "Error loading reviews from ${locationRef.path}: ${e.message}")
+                        completed++
+                        if (completed == total) {
+                            val uniqueReviews = allReviews.distinctBy { it.id }
+                            reviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                        }
+                    }
+            }
+        }
+        
+        // Try direct paths first
+        if (pathsToTry.isNotEmpty()) {
+            loadReviewsFromPaths(pathsToTry)
+        }
+        
+        // Also try to find via collectionGroup (without whereEqualTo to avoid index requirement)
+        firestore.collectionGroup("locations")
+            .get()
+            .addOnSuccessListener { locationsSnapshot ->
+                val foundPaths = locationsSnapshot.documents
+                    .filter { it.id == location.id }
+                    .map { it.reference }
+                
+                if (foundPaths.isNotEmpty()) {
+                    // Add any new paths we found
+                    pathsToTry.addAll(foundPaths)
+                    // Reload with all paths
+                    loadReviewsFromPaths(pathsToTry)
+                }
+            }
+            .addOnFailureListener { e ->
+                android.util.Log.e("LocationDetails", "collectionGroup query failed: ${e.message}")
+                // If we have direct paths, use those
+                if (pathsToTry.isNotEmpty()) {
+                    loadReviewsFromPaths(pathsToTry)
+                } else {
+                    reviews = emptyList()
+                }
+            }
+    }
+
+    // Reverse geocode address from coordinates
+    LaunchedEffect(location.latitude, location.longitude) {
+        if (location.latitude != 0.0 && location.longitude != 0.0) {
+            isLoadingAddress = true
+            address = null
+            try {
+                val geocoder = Geocoder(context, java.util.Locale.getDefault())
+                val results = withContext(Dispatchers.IO) {
+                    geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                }
+                if (results != null && results.isNotEmpty()) {
+                    val addr = results[0]
+                    val parts = mutableListOf<String>()
+                    addr.getAddressLine(0)?.let { parts.add(it) }
+                    if (parts.isEmpty()) {
+                        addr.thoroughfare?.let { parts.add(it) }
+                        addr.subThoroughfare?.let { parts.add(it) }
+                        addr.locality?.let { parts.add(it) }
+                        addr.postalCode?.let { parts.add(it) }
+                        addr.countryName?.let { parts.add(it) }
+                    }
+                    address = parts.joinToString(", ").ifBlank { "Adres niet beschikbaar" }
+                } else {
+                    address = "Adres niet beschikbaar"
+                }
+            } catch (_: Exception) {
+                address = "Adres niet beschikbaar"
+            } finally {
+                isLoadingAddress = false
+            }
+        } else {
+            address = null
+            isLoadingAddress = false
+        }
     }
 
     Scaffold(
@@ -147,6 +294,7 @@ fun LocationDetailsScreen(
                             }
                         }
                     }
+                    // Distance from current location
                     distance?.let {
                         Text(
                             text = stringResource(R.string.distance_from_current_location, it),
@@ -155,6 +303,35 @@ fun LocationDetailsScreen(
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
+
+                    // Address under distance
+                    Spacer(modifier = Modifier.height(8.dp))
+                    when {
+                        isLoadingAddress -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = "Adres ophalen...",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        address != null -> {
+                            Text(
+                                text = address ?: "",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(R.string.user_reviews_title),
@@ -173,45 +350,109 @@ fun LocationDetailsScreen(
         AddRatingPopup(
             onDismiss = { showAddRatingPopup = false },
             onSubmit = { rating, comment ->
-                val ownerId = location.createdBy
                 val currentUser = FirebaseAuth.getInstance().currentUser
-                val raterId = currentUser?.uid ?: ""
-                val raterName = currentUser?.displayName
-                    ?: (currentUser?.email?.substringBefore('@') ?: "User")
+                if (currentUser == null) {
+                    android.widget.Toast.makeText(context, "Je bent niet ingelogd", android.widget.Toast.LENGTH_SHORT).show()
+                    showAddRatingPopup = false
+                    return@AddRatingPopup
+                }
+                
+                val raterId = currentUser.uid
+                val raterName = currentUser.displayName
+                    ?: (currentUser.email?.substringBefore('@') ?: "User")
+                
                 val reviewData = hashMapOf(
                     "rating" to rating,
                     "comment" to comment,
                     "userId" to raterId,
                     "userName" to raterName,
+                    "locationId" to location.id,
+                    "cityId" to cityId,
                     "createdAt" to FieldValue.serverTimestamp()
                 )
-                firestore.collection("users")
-                    .document(ownerId)
+                
+                // Try to save review under current user's location first
+                val currentUserLocationRef = firestore.collection("users")
+                    .document(raterId)
                     .collection("cities")
                     .document(cityId)
                     .collection("locations")
                     .document(location.id)
-                    .collection("reviews")
-                    .add(reviewData)
-                    .addOnSuccessListener {
-                        showAddRatingPopup = false
+                
+                // Check if location exists under current user, if not try under location creator
+                currentUserLocationRef.get()
+                    .addOnSuccessListener { locDoc ->
+                        val locationRef = if (locDoc.exists()) {
+                            currentUserLocationRef
+                        } else {
+                            // Try under the location creator
+                            firestore.collection("users")
+                                .document(location.createdBy)
+                                .collection("cities")
+                                .document(cityId)
+                                .collection("locations")
+                                .document(location.id)
+                        }
+                        
+                        locationRef.collection("reviews")
+                            .add(reviewData)
+                            .addOnSuccessListener {
+                                showAddRatingPopup = false
+                                android.widget.Toast.makeText(context, "Beoordeling toegevoegd!", android.widget.Toast.LENGTH_SHORT).show()
+                                
+                                // Reload reviews from the location where we just saved
+                                locationRef.collection("reviews")
+                                    .get()
+                                    .addOnSuccessListener { reviewsSnapshot ->
+                                        val loadedReviews = reviewsSnapshot.documents.mapNotNull { doc ->
+                                            try {
+                                                val data = doc.data ?: return@mapNotNull null
+                                                Review(
+                                                    id = doc.id,
+                                                    rating = (data["rating"] as? Number)?.toFloat() ?: 0f,
+                                                    comment = data["comment"] as? String ?: "",
+                                                    userId = data["userId"] as? String ?: "",
+                                                    userName = data["userName"] as? String ?: "User",
+                                                    createdAt = doc.getDate("createdAt")
+                                                )
+                                            } catch (e: Exception) {
+                                                null
+                                            }
+                                        }
+                                        // Merge with existing reviews and remove duplicates
+                                        val existingReviewIds = reviews.map { it.id }.toSet()
+                                        val newReviews = loadedReviews.filter { it.id !in existingReviewIds }
+                                        reviews = (reviews + newReviews).sortedByDescending { it.createdAt?.time ?: 0L }
+                                    }
+                                
+                                // Also trigger full reload via LaunchedEffect
+                                reloadReviewsTrigger++
+                            }
+                            .addOnFailureListener { e ->
+                                showAddRatingPopup = false
+                                android.widget.Toast.makeText(context, "Fout bij opslaan: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                    }
+                    .addOnFailureListener { e ->
+                        // If current user location doesn't exist, try under location creator
                         firestore.collection("users")
-                            .document(ownerId)
+                            .document(location.createdBy)
                             .collection("cities")
                             .document(cityId)
                             .collection("locations")
                             .document(location.id)
                             .collection("reviews")
-                            .get()
-                            .addOnSuccessListener { snapshot ->
-                                reviews = snapshot.toObjects(Review::class.java)
+                            .add(reviewData)
+                            .addOnSuccessListener {
+                                showAddRatingPopup = false
+                                android.widget.Toast.makeText(context, "Beoordeling toegevoegd!", android.widget.Toast.LENGTH_SHORT).show()
+                                // Trigger reload
+                                reloadReviewsTrigger++
                             }
-                    }
-                    .addOnFailureListener {
-                        showAddRatingPopup = false
-                    }
-                    .addOnCanceledListener {
-                        showAddRatingPopup = false
+                            .addOnFailureListener { e2 ->
+                                showAddRatingPopup = false
+                                android.widget.Toast.makeText(context, "Fout bij opslaan: ${e2.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
                     }
             }
         )

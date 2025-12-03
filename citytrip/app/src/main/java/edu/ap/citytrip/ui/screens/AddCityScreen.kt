@@ -36,11 +36,12 @@ import java.io.InputStream
 fun AddCityScreen(
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
-    onSaveCity: (String, Uri?, () -> Unit) -> Unit = { _, _, _ -> }
+    onSaveCity: (String, Uri?, () -> Unit, (String) -> Unit) -> Unit = { _, _, _, _ -> }
 ) {
     var cityName by remember { mutableStateOf("") }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showNameError by remember { mutableStateOf(false) }
+    var duplicateError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     
     val imageBitmap = remember(selectedImageUri) {
@@ -106,6 +107,7 @@ fun AddCityScreen(
                     onValueChange = { 
                         cityName = it
                         showNameError = false
+                        duplicateError = null
                     },
                     placeholder = {
                         Text(
@@ -116,7 +118,7 @@ fun AddCityScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(8.dp),
-                    isError = showNameError,
+                    isError = showNameError || duplicateError != null,
                     colors = OutlinedTextFieldDefaults.colors(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                     )
@@ -124,6 +126,14 @@ fun AddCityScreen(
                 if (showNameError) {
                     Text(
                         text = stringResource(R.string.error_city_name_required),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (duplicateError != null) {
+                    Text(
+                        text = duplicateError ?: "",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 4.dp)
@@ -210,10 +220,14 @@ fun AddCityScreen(
                 onClick = {
                     if (cityName.isBlank()) {
                         showNameError = true
+                        duplicateError = null
                     } else {
                         showNameError = false
-                        onSaveCity(cityName.trim(), selectedImageUri) {
+                        duplicateError = null
+                        onSaveCity(cityName.trim(), selectedImageUri, {
                             onBackClick()
+                        }) { errorMessage ->
+                            duplicateError = errorMessage
                         }
                     }
                 },

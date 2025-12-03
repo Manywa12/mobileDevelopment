@@ -8,7 +8,7 @@
     <string name="cd_app_icon">CityTrip</string>
 
     <!-- HomeScreen -->
-    <string name="title_your_cities">Jouw steden</string>
+    <string name="title_your_cities">Steden</string>
     <string name="cd_sign_out">Uitloggen</string>
     <string name="action_switch_language">Taal wijzigen</string>
     <string name="cd_switch_language">Wijzig de app-taal</string>
@@ -70,9 +70,25 @@
     <string name="error_register_failed">Registratie mislukt. Probeer het opnieuw.</string>
     <string name="error_city_name_required">Stadnaam is verplicht</string>
 
+    <!-- Chat -->
+    <string name="chat_placeholder_message">Typ een bericht...</string>
+    <string name="chat_action_send">Bericht verzenden</string>
+
+    <!-- MessagesScreen -->
+    <string name="title_messages">Berichten</string>
+    <string name="search_placeholder">Zoeken...</string>
+    <string name="cd_clear_search">Zoekveld wissen</string>
+    <string name="start_chat_conversation">Start een chatgesprek</string>
+    <string name="no_messages_yet">Nog geen berichten. Start het gesprek!</string>
+
     <!-- Add Location Screen -->
     <string name="add_location_title">Locatie toevoegen</string>
     <string name="current_location_label">Huidige locatie</string>
+    <string name="location_coordinates_label">Locatie coördinaten</string>
+    <string name="address_label">Adres</string>
+    <string name="address_placeholder">Voer adres of plaatsnaam in</string>
+    <string name="address_example">bijv. Eiffeltoren, Parijs</string>
+    <string name="use_current_location">Gebruik huidige locatie</string>
     <string name="location_name_label">Naam locatie</string>
     <string name="location_name_placeholder">bv. Eiffeltoren</string>
     <string name="description_label">Omschrijving</string>
@@ -107,4 +123,12 @@
     <string name="category_museum">Museum</string>
     <string name="category_park">Park</string>
     <string name="category_shopping">Winkel</string>
+
+    <string name="chat_hint">Typ een chatbericht...</string>
+    <string name="send_message">Stuur een bericht</string>
+
+    <string name="messages">Berichten</string>
+    <string name="new_chat">Nieuw gesprek</string>
+    <string name="error_city_already_exists">Een stad met deze naam bestaat al</string>
+    <string name="error_location_already_exists">Een locatie met deze naam bestaat al in deze stad</string>
 </resources>

@@ -16,6 +16,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Citytrip"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,10 +24,15 @@
             android:theme="@style/Theme.Citytrip">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ✅ LEGACY CHAT ACTIVITIES -->
+        <activity android:name="edu.ap.citytrip.ui.screens.Message.MessagesListActivity" />
+        <activity android:name="edu.ap.citytrip.ui.screens.Message.UserListActivity" />
+        <activity android:name="edu.ap.citytrip.ui.screens.Message.ChatActivity" />
+
     </application>
 
 </manifest>

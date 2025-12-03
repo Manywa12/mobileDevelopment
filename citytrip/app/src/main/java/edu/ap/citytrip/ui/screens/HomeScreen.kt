@@ -46,7 +46,10 @@ fun HomeScreen(
     onSignOut: () -> Unit,
     onCityClick: (City) -> Unit = {},
     onAddCityClick: () -> Unit = {},
-    onMapClick: () -> Unit = {}
+    onHomeClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
+    onMessagesClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {}
 ) {
 
     Scaffold(
@@ -77,16 +80,6 @@ fun HomeScreen(
                         Icon(Icons.Default.Logout, contentDescription = stringResource(R.string.cd_sign_out))
                     }
                 }
-            )
-        },
-        bottomBar = {
-            BottomNavigationBar(
-                selectedDestination = BottomNavDestination.HOME,
-                onHomeClick = {},
-                onMapClick = onMapClick,
-                onMessagesClick = {},
-                onProfileClick = {},
-                onAddClick = onAddCityClick
             )
         }
     ) { paddingValues ->
@@ -326,9 +319,10 @@ fun HomeScreenPreview() {
             onSignOut = {},
             onCityClick = {},
             onAddCityClick = {},
-            onProfileClick = {},
+            onHomeClick = {},
             onMapClick = {},
-            onMessagesClick = {}
+            onMessagesClick = {},
+            onProfileClick = {}
         )
     }
 }

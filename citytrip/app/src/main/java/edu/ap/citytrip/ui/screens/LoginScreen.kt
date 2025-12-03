@@ -143,15 +143,26 @@ fun LoginScreen(
                                 val user = auth.currentUser
                                 val uid = user?.uid
                                 if (uid != null) {
-                                    FirebaseFirestore.getInstance().collection("users").document(uid).get()
+                                    val firestore = FirebaseFirestore.getInstance()
+                                    firestore.collection("users").document(uid).get()
                                         .addOnSuccessListener { doc ->
-                                            val name = doc.data?.get("name") as? String
-                                            if (name != null && name.isNotBlank() && (user.displayName.isNullOrBlank())) {
-                                                user.updateProfile(
-                                                    UserProfileChangeRequest.Builder()
-                                                        .setDisplayName(name)
-                                                        .build()
+                                            if (!doc.exists()) {
+                                                // Create user document if it doesn't exist
+                                                val profile = hashMapOf(
+                                                    "name" to (user.displayName ?: user.email?.substringBefore('@') ?: "User"),
+                                                    "email" to (user.email ?: "")
                                                 )
+                                                firestore.collection("users").document(uid).set(profile)
+                                            } else {
+                                                // Update displayName if needed
+                                                val name = doc.data?.get("name") as? String
+                                                if (name != null && name.isNotBlank() && (user.displayName.isNullOrBlank())) {
+                                                    user.updateProfile(
+                                                        UserProfileChangeRequest.Builder()
+                                                            .setDisplayName(name)
+                                                            .build()
+                                                    )
+                                                }
                                             }
                                         }
                                 }

@@ -1,61 +1,46 @@
 package edu.ap.citytrip.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import edu.ap.citytrip.R
-import edu.ap.citytrip.ui.theme.CitytripTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     modifier: Modifier = Modifier,
-    userName: String?,
-    userEmail: String?,
-    photoUrl: String?,
-    onMyCitiesClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onLogoutClick: () -> Unit,
-    onHomeClick: () -> Unit,
+    userName: String? = null,
+    userEmail: String? = null,
+    photoUrl: String? = null,
+    onMyCitiesClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {},
+    onHomeClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
     onMessagesClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    onAddClick: () -> Unit = {},
+    onAddClick: () -> Unit = {}
 ) {
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.title_profile),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-            )
-        },
-        bottomBar = {
-            BottomNavigationBar(
-                selectedDestination = BottomNavDestination.PROFILE,
-                onHomeClick = onHomeClick,
-                onMapClick = onMapClick,
-                onMessagesClick = onMessagesClick,
-                onProfileClick = onProfileClick,
-                onAddClick = onAddClick
+                title = { Text(stringResource(R.string.title_profile), style = MaterialTheme.typography.titleLarge) }
             )
         }
     ) { paddingValues ->
@@ -63,120 +48,119 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 24.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
+            // Profile Photo
+            if (photoUrl.isNullOrBlank()) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(96.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!photoUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = photoUrl,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Text(
-                                text = userName?.firstOrNull()?.uppercaseChar()?.toString() ?: "C",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = userName ?: stringResource(R.string.profile_default_name),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = userEmail ?: stringResource(R.string.profile_default_email),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = stringResource(R.string.title_profile),
+                        modifier = Modifier.size(60.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
+            } else {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = stringResource(R.string.title_profile),
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
             }
 
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onMyCitiesClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text(stringResource(R.string.profile_my_cities))
-                }
-                OutlinedButton(
-                    onClick = onSettingsClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text(stringResource(R.string.profile_settings))
-                }
-                Button(
-                    onClick = onLogoutClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(
-                        stringResource(R.string.profile_logout),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            // User Name
+            Text(
+                text = userName ?: stringResource(R.string.profile_default_name),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            // User Email
+            Text(
+                text = userEmail ?: stringResource(R.string.profile_default_email),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Menu Items
+            ProfileMenuItem(
+                icon = Icons.Default.LocationCity,
+                title = stringResource(R.string.profile_my_cities),
+                onClick = onMyCitiesClick
+            )
+
+            ProfileMenuItem(
+                icon = Icons.Default.Settings,
+                title = stringResource(R.string.profile_settings),
+                onClick = onSettingsClick
+            )
+
+            ProfileMenuItem(
+                icon = Icons.AutoMirrored.Filled.Logout,
+                title = stringResource(R.string.profile_logout),
+                onClick = onLogoutClick,
+                isDestructive = true
+            )
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-private fun ProfileScreenPreview() {
-    CitytripTheme {
-        ProfileScreen(
-            userName = "Jane Doe",
-            userEmail = "jane.doe@example.com",
-            photoUrl = null,
-            onMyCitiesClick = {},
-            onSettingsClick = {},
-            onLogoutClick = {},
-            onHomeClick = {},
-            onAddClick = {}
+fun ProfileMenuItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
-

@@ -107,17 +107,22 @@ fun MapViewScreen(
                         setTileSource(TileSourceFactory.MAPNIK)
                         setMultiTouchControls(true)
                         controller.setZoom(12.0)
-
-                        locations.forEach { location ->
-                            val marker = Marker(this)
-                            marker.position = GeoPoint(location.latitude, location.longitude)
-                            marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            marker.setOnMarkerClickListener { _, _ ->
-                                selectedLocation = location
-                                true
-                            }
-                            overlays.add(marker)
+                    }
+                },
+                update = { view ->
+                    // Clear existing markers
+                    view.overlays.clear()
+                    
+                    // Add markers for all locations with valid coordinates
+                    locations.filter { it.latitude != 0.0 && it.longitude != 0.0 }.forEach { location ->
+                        val marker = Marker(view)
+                        marker.position = GeoPoint(location.latitude, location.longitude)
+                        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        marker.setOnMarkerClickListener { _, _ ->
+                            selectedLocation = location
+                            true
                         }
+                        view.overlays.add(marker)
                     }
                 }
             )
@@ -135,7 +140,7 @@ fun MapViewScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = "My Location")
             }
@@ -144,7 +149,7 @@ fun MapViewScreen(
                 Card(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(16.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
                         .fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(8.dp)
