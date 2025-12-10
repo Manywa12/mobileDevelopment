@@ -52,10 +52,9 @@ fun CityDetailsScreen(
     val isPreview = LocalInspectionMode.current
     var selectedCategory by remember { mutableStateOf("All") }
 
-    DisposableEffect(userId, city.id, city.createdBy, isPreview, onLocationAdded) {
+    DisposableEffect(userId, city.id, isPreview, onLocationAdded) {
         var listener: ListenerRegistration? = null
-        var fallbackListener: ListenerRegistration? = null
-        
+
         when {
             isPreview -> {
                 locations = previewLocations()
@@ -67,10 +66,8 @@ fun CityDetailsScreen(
             }
             else -> {
                 isLoading = true
-                val allLocations = mutableSetOf<String>() // Track unique location IDs
                 val locationMap = mutableMapOf<String, Location>()
-                
-                // Function to update locations list
+
                 fun updateLocationsList() {
                     val uniqueLocations = locationMap.values.toList().sortedByDescending { it.name }
                     locations = uniqueLocations
@@ -79,15 +76,13 @@ fun CityDetailsScreen(
                     }
                     isLoading = false
                 }
-                
-                // Listen to locations from city owner
-                listener = firestore.collection("users")
-                    .document(city.createdBy)
-                    .collection("cities")
-                    .document(city.id)
-                    .collection("locations")
+
+                listener = firestore.collectionGroup("locations")
                     .addSnapshotListener { snapshot, _ ->
+                        locationMap.clear()
                         snapshot?.documents?.forEach { doc ->
+                            val parentCityRef = doc.reference.parent.parent
+                            if (parentCityRef?.id != city.id) return@forEach
                             val data = doc.data ?: return@forEach
                             val locationId = doc.id
                             val location = Location(
@@ -101,48 +96,14 @@ fun CityDetailsScreen(
                                 createdBy = data["createdBy"] as? String ?: ""
                             )
                             locationMap[locationId] = location
-                            allLocations.add(locationId)
                         }
                         updateLocationsList()
                     }
-                
-                // Also listen to locations from current user if different from city owner
-                if (userId != city.createdBy) {
-                    fallbackListener = firestore.collection("users")
-                        .document(userId)
-                        .collection("cities")
-                        .document(city.id)
-                        .collection("locations")
-                        .addSnapshotListener { snapshot, _ ->
-                            snapshot?.documents?.forEach { doc ->
-                                val data = doc.data ?: return@forEach
-                                val locationId = doc.id
-                                // Only add if it has the correct cityId
-                                val locCityId = data["cityId"] as? String
-                                if (locCityId == city.id) {
-                                    val location = Location(
-                                        id = locationId,
-                                        name = data["name"] as? String ?: "",
-                                        imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                        category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                        description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                        latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                        longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                        createdBy = data["createdBy"] as? String ?: ""
-                                    )
-                                    locationMap[locationId] = location
-                                    allLocations.add(locationId)
-                                }
-                            }
-                            updateLocationsList()
-                        }
-                }
             }
         }
-        
+
         onDispose {
             listener?.remove()
-            fallbackListener?.remove()
         }
     }
 

@@ -129,17 +129,12 @@ class MainActivity : ComponentActivity() {
                                                 all.addAll(citiesLoaded)
                                                 cities = all
                                                 
-                                                // Count locations for each city
                                                 val userId = auth.currentUser?.uid
                                                 citiesLoaded.forEach { city ->
-                                                    var countFromOwner = 0
-                                                    var countFromUser = 0
-                                                    var ownerDone = false
-                                                    var userDone = false
-                                                    
-                                                    fun updateCount() {
-                                                        if (ownerDone && (userId == null || userId == city.createdBy || userDone)) {
-                                                            val totalCount = countFromOwner + countFromUser
+                                                    firestore.collectionGroup("locations")
+                                                        .get()
+                                                        .addOnSuccessListener { locationsSnapshot ->
+                                                            val totalCount = locationsSnapshot.documents.count { it.reference.parent.parent?.id == city.id }
                                                             cities = cities.map { c ->
                                                                 if (c.id == city.id) {
                                                                     c.copy(localityCount = totalCount)
@@ -148,38 +143,6 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                             }
                                                         }
-                                                    }
-                                                    
-                                                    // Count from city owner
-                                                    firestore.collection("users")
-                                                        .document(city.createdBy)
-                                                        .collection("cities")
-                                                        .document(city.id)
-                                                        .collection("locations")
-                                                        .get()
-                                                        .addOnSuccessListener { locationsSnapshot ->
-                                                            countFromOwner = locationsSnapshot.documents.size
-                                                            ownerDone = true
-                                                            updateCount()
-                                                        }
-                                                    
-                                                    // Also count from current user if different
-                                                    if (userId != null && userId != city.createdBy) {
-                                                        firestore.collection("users")
-                                                            .document(userId)
-                                                            .collection("cities")
-                                                            .document(city.id)
-                                                            .collection("locations")
-                                                            .get()
-                                                            .addOnSuccessListener { userLocationsSnapshot ->
-                                                                countFromUser = userLocationsSnapshot.documents
-                                                                    .count { it.data?.get("cityId") == city.id }
-                                                                userDone = true
-                                                                updateCount()
-                                                            }
-                                                    } else {
-                                                        userDone = true
-                                                    }
                                                 }
                                             }
                                     }
@@ -208,20 +171,13 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 
-                                // Calculate actual location counts for each city
                                 if (loadedCities.isNotEmpty()) {
                                     cities = loadedCities
-                                    val userId = auth.currentUser?.uid
-                                    // Count locations for each city
                                     loadedCities.forEach { city ->
-                                        var countFromOwner = 0
-                                        var countFromUser = 0
-                                        var ownerDone = false
-                                        var userDone = false
-                                        
-                                        fun updateCount() {
-                                            if (ownerDone && (userId == null || userId == city.createdBy || userDone)) {
-                                                val totalCount = countFromOwner + countFromUser
+                                        firestore.collectionGroup("locations")
+                                            .get()
+                                            .addOnSuccessListener { locationsSnapshot ->
+                                                val totalCount = locationsSnapshot.documents.count { it.reference.parent.parent?.id == city.id }
                                                 cities = cities.map { c ->
                                                     if (c.id == city.id) {
                                                         c.copy(localityCount = totalCount)
@@ -230,38 +186,6 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                             }
-                                        }
-                                        
-                                        // Count from city owner
-                                        firestore.collection("users")
-                                            .document(city.createdBy)
-                                            .collection("cities")
-                                            .document(city.id)
-                                            .collection("locations")
-                                            .get()
-                                            .addOnSuccessListener { locationsSnapshot ->
-                                                countFromOwner = locationsSnapshot.documents.size
-                                                ownerDone = true
-                                                updateCount()
-                                            }
-                                        
-                                        // Also count from current user if different
-                                        if (userId != null && userId != city.createdBy) {
-                                            firestore.collection("users")
-                                                .document(userId)
-                                                .collection("cities")
-                                                .document(city.id)
-                                                .collection("locations")
-                                                .get()
-                                                .addOnSuccessListener { userLocationsSnapshot ->
-                                                    countFromUser = userLocationsSnapshot.documents
-                                                        .count { it.data?.get("cityId") == city.id }
-                                                    userDone = true
-                                                    updateCount()
-                                                }
-                                        } else {
-                                            userDone = true
-                                        }
                                     }
                                 } else {
                                     loadAllCitiesFallback()
@@ -539,13 +463,12 @@ class MainActivity : ComponentActivity() {
                 fun fetchLocationsForCity(cityId: String) {
                     val idMap = mutableMapOf<String, String>()
                     firestore.collectionGroup("locations")
-                        .whereEqualTo("cityId", cityId)
                         .get()
                         .addOnSuccessListener { locationsSnapshot ->
                             val locs = locationsSnapshot.documents.mapNotNull { locDoc ->
+                                val parentCityRef = locDoc.reference.parent.parent
+                                if (parentCityRef?.id != cityId) return@mapNotNull null
                                 val data = locDoc.data ?: return@mapNotNull null
-                                val cityRef = locDoc.reference.parent.parent
-                                if (cityRef?.id != cityId) return@mapNotNull null
                                 val latAny = data["latitude"]
                                 val lonAny = data["longitude"]
                                 val latitude = when (latAny) {
