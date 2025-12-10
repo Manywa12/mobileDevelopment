@@ -39,7 +39,7 @@
     <string name="title_profile">Profiel</string>
     <string name="profile_default_name">City Explorer</string>
     <string name="profile_default_email">onbekend@citytrip.app</string>
-    <string name="profile_my_cities">Mijn steden</string>
+    <string name="profile_my_cities">Steden</string>
     <string name="profile_settings">Instellingen</string>
     <string name="profile_logout">Uitloggen</string>
 
@@ -129,6 +129,8 @@
 
     <string name="messages">Berichten</string>
     <string name="new_chat">Nieuw gesprek</string>
+    <string name="message_user">Bericht sturen</string>
+    <string name="published_by">Gepubliceerd door</string>
     <string name="error_city_already_exists">Een stad met deze naam bestaat al</string>
     <string name="error_location_already_exists">Een locatie met deze naam bestaat al in deze stad</string>
 </resources>

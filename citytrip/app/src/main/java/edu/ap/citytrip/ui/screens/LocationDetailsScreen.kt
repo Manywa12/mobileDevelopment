@@ -4,10 +4,14 @@ import android.content.Context
 import android.location.Geocoder
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Message
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
@@ -30,6 +35,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import edu.ap.citytrip.R
 import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.data.Review
+import edu.ap.citytrip.ui.screens.Message.ConversationScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -48,8 +54,18 @@ fun LocationDetailsScreen(
     var distance by remember { mutableStateOf<Float?>(null) }
     var address by remember { mutableStateOf<String?>(null) }
     var isLoadingAddress by remember { mutableStateOf(false) }
+    
+    // State for messaging
+    var selectedReviewUserId by remember { mutableStateOf<String?>(null) }
+    var selectedReviewUserName by remember { mutableStateOf<String?>(null) }
+    var selectedReviewUserPhotoUrl by remember { mutableStateOf<String?>(null) }
     var cityOwnerId by remember { mutableStateOf<String?>(null) }
     var reloadReviewsTrigger by remember { mutableStateOf(0) }
+    
+    // State for location creator info
+    var locationCreatorName by remember { mutableStateOf<String?>(null) }
+    var locationCreatorPhotoUrl by remember { mutableStateOf<String?>(null) }
+    var isLoadingCreatorInfo by remember { mutableStateOf(false) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -185,6 +201,33 @@ fun LocationDetailsScreen(
             }
     }
 
+    // Load location creator info
+    LaunchedEffect(location.createdBy) {
+        if (location.createdBy.isNotBlank()) {
+            isLoadingCreatorInfo = true
+            firestore.collection("users").document(location.createdBy).get()
+                .addOnSuccessListener { doc ->
+                    val displayName = doc.getString("displayName") ?: ""
+                    val email = doc.getString("email") ?: ""
+                    val photoUrl = doc.getString("photoUrl") ?: ""
+                    val name = if (displayName.isNotBlank()) displayName 
+                        else email.substringBefore("@").ifBlank { "Unknown User" }
+                    locationCreatorName = name
+                    locationCreatorPhotoUrl = photoUrl
+                    isLoadingCreatorInfo = false
+                }
+                .addOnFailureListener {
+                    locationCreatorName = "Unknown User"
+                    locationCreatorPhotoUrl = ""
+                    isLoadingCreatorInfo = false
+                }
+        } else {
+            locationCreatorName = null
+            locationCreatorPhotoUrl = null
+            isLoadingCreatorInfo = false
+        }
+    }
+
     // Reverse geocode address from coordinates
     LaunchedEffect(location.latitude, location.longitude) {
         if (location.latitude != 0.0 && location.longitude != 0.0) {
@@ -221,6 +264,22 @@ fun LocationDetailsScreen(
         }
     }
 
+    // Show conversation screen if a user is selected for messaging
+    selectedReviewUserId?.let { userId ->
+        ConversationScreen(
+            otherUid = userId,
+            otherUserName = selectedReviewUserName ?: "User",
+            otherUserPhotoUrl = selectedReviewUserPhotoUrl ?: "",
+            modifier = Modifier,
+            onBackClick = {
+                selectedReviewUserId = null
+                selectedReviewUserName = null
+                selectedReviewUserPhotoUrl = null
+            }
+        )
+        return
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -332,6 +391,71 @@ fun LocationDetailsScreen(
                         }
                     }
 
+                    // Location creator info
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.published_by),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        when {
+                            isLoadingCreatorInfo -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                            locationCreatorName != null -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Avatar
+                                    if (locationCreatorPhotoUrl?.isNotBlank() == true) {
+                                        AsyncImage(
+                                            model = locationCreatorPhotoUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        val initial = locationCreatorName?.take(1)?.uppercase() ?: "?"
+                                        val avatarColor = remember(locationCreatorName) {
+                                            getColorForUser(locationCreatorName ?: "default")
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(avatarColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = initial,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = locationCreatorName ?: "Unknown User",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(R.string.user_reviews_title),
@@ -341,7 +465,30 @@ fun LocationDetailsScreen(
                 }
             }
             items(reviews) { review ->
-                ReviewItem(review)
+                ReviewItem(
+                    review = review,
+                    onMessageClick = {
+                        // Get user info from Firestore
+                        firestore.collection("users").document(review.userId).get()
+                            .addOnSuccessListener { doc ->
+                                val displayName = doc.getString("displayName") ?: ""
+                                val email = doc.getString("email") ?: ""
+                                val photoUrl = doc.getString("photoUrl") ?: ""
+                                val name = if (displayName.isNotBlank()) displayName 
+                                    else email.substringBefore("@").ifBlank { review.userName }
+                                
+                                selectedReviewUserId = review.userId
+                                selectedReviewUserName = name
+                                selectedReviewUserPhotoUrl = photoUrl
+                            }
+                            .addOnFailureListener {
+                                // Fallback to review data if Firestore fetch fails
+                                selectedReviewUserId = review.userId
+                                selectedReviewUserName = review.userName.ifBlank { "User" }
+                                selectedReviewUserPhotoUrl = ""
+                            }
+                    }
+                )
             }
         }
     }
@@ -460,7 +607,14 @@ fun LocationDetailsScreen(
 }
 
 @Composable
-fun ReviewItem(review: Review) {
+fun ReviewItem(
+    review: Review,
+    onMessageClick: () -> Unit
+) {
+    val auth = remember { FirebaseAuth.getInstance() }
+    val currentUserId = auth.currentUser?.uid ?: ""
+    val isOwnReview = review.userId == currentUserId
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -470,7 +624,7 @@ fun ReviewItem(review: Review) {
         Row(modifier = Modifier.padding(16.dp)) {
             // Add user avatar here
             Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 val timeText = remember(review.createdAt) {
                     val now = System.currentTimeMillis()
                     val ts = review.createdAt?.time ?: now
@@ -493,7 +647,26 @@ fun ReviewItem(review: Review) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = review.userName.ifBlank { "User" }, fontWeight = FontWeight.Bold)
-                    Text(text = timeText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(text = timeText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // Only show message button if it's not your own review
+                        if (!isOwnReview && currentUserId.isNotBlank()) {
+                            IconButton(
+                                onClick = onMessageClick,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Message,
+                                    contentDescription = stringResource(R.string.message_user),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     (1..5).forEach { index ->
@@ -509,6 +682,23 @@ fun ReviewItem(review: Review) {
             }
         }
     }
+}
+
+private fun getColorForUser(identifier: String): Color {
+    val colors = listOf(
+        Color(0xFF6200EE), // Purple
+        Color(0xFF03DAC6), // Teal
+        Color(0xFF018786), // Dark Teal
+        Color(0xFFBB86FC), // Light Purple
+        Color(0xFF3700B3), // Dark Purple
+        Color(0xFF03DAC5), // Cyan
+        Color(0xFF018786), // Teal
+        Color(0xFFCF6679), // Pink
+        Color(0xFF6200EE), // Purple
+        Color(0xFF03DAC6)  // Teal
+    )
+    val hash = identifier.hashCode()
+    return colors[Math.abs(hash) % colors.size]
 }
 
 @Composable

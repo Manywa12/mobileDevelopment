@@ -136,6 +136,8 @@
     <string name="cd_unread_count">Unread messages count</string>
     <string name="cd_online_status">Online status</string>
     <string name="cd_more_options">More options</string>
+    <string name="message_user">Message user</string>
+    <string name="published_by">Published by</string>
     <string name="error_city_already_exists">A city with this name already exists</string>
     <string name="error_location_already_exists">A location with this name already exists in this city</string>
 </resources>

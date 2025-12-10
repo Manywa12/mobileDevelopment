@@ -54,7 +54,7 @@ fun CityDetailsScreen(
 
     DisposableEffect(userId, city.id, city.createdBy, isPreview, onLocationAdded) {
         var listener: ListenerRegistration? = null
-        var fallbackListener: ListenerRegistration? = null
+        var cityOwnerListener: ListenerRegistration? = null
         
         when {
             isPreview -> {
@@ -80,69 +80,85 @@ fun CityDetailsScreen(
                     isLoading = false
                 }
                 
-                // Listen to locations from city owner
-                listener = firestore.collection("users")
-                    .document(city.createdBy)
-                    .collection("cities")
-                    .document(city.id)
-                    .collection("locations")
-                    .addSnapshotListener { snapshot, _ ->
+                // Use collectionGroup to get ALL locations for this cityId from ALL users
+                // This ensures that locations added by any user are visible to everyone viewing the city
+                listener = firestore.collectionGroup("locations")
+                    .whereEqualTo("cityId", city.id)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) {
+                            isLoading = false
+                            return@addSnapshotListener
+                        }
+                        
                         snapshot?.documents?.forEach { doc ->
                             val data = doc.data ?: return@forEach
                             val locationId = doc.id
-                            val location = Location(
-                                id = locationId,
-                                name = data["name"] as? String ?: "",
-                                imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                createdBy = data["createdBy"] as? String ?: ""
-                            )
-                            locationMap[locationId] = location
-                            allLocations.add(locationId)
+                            
+                            // Verify that this location belongs to the correct city
+                            val locCityId = data["cityId"] as? String
+                            if (locCityId == city.id) {
+                                // Use locationId as unique key (should be unique within a city)
+                                val location = Location(
+                                    id = locationId,
+                                    name = data["name"] as? String ?: "",
+                                    imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
+                                    category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                    description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                    latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
+                                    longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
+                                    createdBy = data["createdBy"] as? String ?: ""
+                                )
+                                
+                                // Use locationId as key - if same location exists from different users, last one wins
+                                locationMap[locationId] = location
+                                allLocations.add(locationId)
+                            }
                         }
                         updateLocationsList()
                     }
                 
-                // Also listen to locations from current user if different from city owner
-                if (userId != city.createdBy) {
-                    fallbackListener = firestore.collection("users")
-                        .document(userId)
-                        .collection("cities")
-                        .document(city.id)
-                        .collection("locations")
-                        .addSnapshotListener { snapshot, _ ->
-                            snapshot?.documents?.forEach { doc ->
+                // Also listen to locations from city owner as fallback
+                // This ensures we catch any locations that might not have cityId set correctly
+                cityOwnerListener = firestore.collection("users")
+                    .document(city.createdBy)
+                    .collection("cities")
+                    .document(city.id)
+                    .collection("locations")
+                    .addSnapshotListener { ownerSnapshot, ownerError ->
+                        if (ownerError == null) {
+                            ownerSnapshot?.documents?.forEach { doc ->
                                 val data = doc.data ?: return@forEach
                                 val locationId = doc.id
-                                // Only add if it has the correct cityId
-                                val locCityId = data["cityId"] as? String
-                                if (locCityId == city.id) {
-                                    val location = Location(
-                                        id = locationId,
-                                        name = data["name"] as? String ?: "",
-                                        imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                        category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                        description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                        latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                        longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                        createdBy = data["createdBy"] as? String ?: ""
-                                    )
-                                    locationMap[locationId] = location
-                                    allLocations.add(locationId)
+                                
+                                // Only add if not already in map (to avoid duplicates from collectionGroup query)
+                                if (!locationMap.containsKey(locationId)) {
+                                    val locCityId = data["cityId"] as? String
+                                    // Add if cityId matches or is missing (for old locations without cityId)
+                                    if (locCityId == city.id || locCityId == null) {
+                                        val location = Location(
+                                            id = locationId,
+                                            name = data["name"] as? String ?: "",
+                                            imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
+                                            category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                            description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                            latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
+                                            longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
+                                            createdBy = data["createdBy"] as? String ?: ""
+                                        )
+                                        locationMap[locationId] = location
+                                        allLocations.add(locationId)
+                                    }
                                 }
                             }
                             updateLocationsList()
                         }
-                }
+                    }
             }
         }
         
         onDispose {
             listener?.remove()
-            fallbackListener?.remove()
+            cityOwnerListener?.remove()
         }
     }
 

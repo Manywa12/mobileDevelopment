@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -49,7 +50,8 @@ fun HomeScreen(
     onHomeClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
     onMessagesClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onRefreshLocations: () -> Unit = {}
 ) {
 
     Scaffold(
@@ -67,6 +69,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.title_your_cities), style = MaterialTheme.typography.titleLarge) },
                 actions = {
+                    IconButton(onClick = onRefreshLocations) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Locaties vernieuwen")
+                    }
                     IconButton(onClick = {
                         val current = AppCompatDelegate.getApplicationLocales().toLanguageTags()
                         val nextTag = if (current.startsWith("nl")) "en" else "nl"
@@ -199,6 +204,7 @@ fun CityCard(
 @Composable
 fun BottomNavigationBar(
     selectedDestination: BottomNavDestination,
+    unreadMessageCount: Int = 0,
     onHomeClick: () -> Unit,
     onMapClick: () -> Unit,
     onMessagesClick: () -> Unit,
@@ -245,7 +251,8 @@ fun BottomNavigationBar(
                 icon = Icons.Default.Message,
                 contentDescription = stringResource(R.string.nav_messages),
                 onClick = onMessagesClick,
-                isSelected = selectedDestination == BottomNavDestination.MESSAGES
+                isSelected = selectedDestination == BottomNavDestination.MESSAGES,
+                badgeCount = if (unreadMessageCount > 0) unreadMessageCount else null
             )
             NavigationIconButton(
                 icon = Icons.Default.Person,
@@ -262,15 +269,41 @@ fun NavigationIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    isSelected: Boolean
+    isSelected: Boolean,
+    badgeCount: Int? = null
 ) {
-    IconButton(onClick = onClick) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(24.dp),
-            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Box {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(24.dp),
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // Badge
+        if (badgeCount != null && badgeCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 8.dp, y = (-4).dp)
+                    .size(18.dp)
+                    .background(
+                        Color.Red,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+        }
     }
 }
 

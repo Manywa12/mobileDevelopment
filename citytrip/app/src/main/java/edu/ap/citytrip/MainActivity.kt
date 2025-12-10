@@ -50,6 +50,16 @@ import androidx.activity.ComponentActivity
 import edu.ap.citytrip.ui.screens.BottomNavigationBar
 import edu.ap.citytrip.ui.screens.Message.MessagesScreen
 import edu.ap.citytrip.R
+import edu.ap.citytrip.data.AppDatabase
+import edu.ap.citytrip.data.LocationRepository
+import edu.ap.citytrip.data.LocationEntity
+import edu.ap.citytrip.data.LocationDataState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withContext
 
 
 class MainActivity : ComponentActivity() {
@@ -69,9 +79,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CitytripTheme {
+                val context = LocalContext.current
                 val auth = remember { FirebaseAuth.getInstance() }
                 val firestore = remember { FirebaseFirestore.getInstance() }
                 val storage = remember { FirebaseStorage.getInstance() }
+                val database = remember { AppDatabase.getDatabase(context) }
+                val locationRepository = remember { LocationRepository(database.locationDao(), firestore) }
+                val repositoryScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
                 var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
                 var currentScreen by remember { mutableStateOf(AuthScreen.WELCOME) }
                 var showAddCityScreen by remember { mutableStateOf(false) }
@@ -80,6 +94,7 @@ class MainActivity : ComponentActivity() {
                 var cities by remember { mutableStateOf<List<City>>(emptyList()) }
                 var locationsForMap by remember { mutableStateOf<List<Location>>(emptyList()) }
                 var locationCityIdMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+                var locationDataState by remember { mutableStateOf<LocationDataState>(LocationDataState.Loading()) }
                 var selectedCityId by rememberSaveable { mutableStateOf<String?>(null) }
                 var selectedLocation by remember { mutableStateOf<Location?>(null) }
                 var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -87,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 var currentTab by rememberSaveable { mutableStateOf(BottomNavDestination.HOME) }
                 val currentUserId = auth.currentUser?.uid
                 var locationListeners by remember { mutableStateOf<List<ListenerRegistration>>(emptyList()) }
+                var unreadMessageCount by remember { mutableStateOf(0) }
 
                 DisposableEffect(isLoggedIn) {
                     val userId = auth.currentUser?.uid
@@ -499,41 +515,103 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun fetchAllLocations() {
-                    val allLocations = mutableListOf<Location>()
-                    val idMap = mutableMapOf<String, String>()
-                    firestore.collectionGroup("locations")
-                        .get()
-                        .addOnSuccessListener { locationsSnapshot ->
-                            locationsSnapshot.documents.forEach { locDoc ->
-                                val data = locDoc.data ?: emptyMap()
-                                val latAny = data["latitude"]
-                                val lonAny = data["longitude"]
-                                val latitude = when (latAny) {
-                                    is Number -> latAny.toDouble()
-                                    else -> 0.0
+                    android.util.Log.d("MainActivity", "🗺️ fetchAllLocations called - loading from cache first")
+                    // FIRST: Load from cache immediately (works offline)
+                    repositoryScope.launch(Dispatchers.IO) {
+                        try {
+                            android.util.Log.d("MainActivity", "🗺️ Querying database for cached locations...")
+                            val cachedLocations = database.locationDao().getAllLocationsSync()
+                            android.util.Log.d("MainActivity", "🗺️ Cache has ${cachedLocations.size} locations")
+                            
+                            if (cachedLocations.isNotEmpty()) {
+                                cachedLocations.take(3).forEach { entity ->
+                                    android.util.Log.d("MainActivity", "   - Map cache item: ${entity.name} (lat: ${entity.latitude}, lng: ${entity.longitude})")
                                 }
-                                val longitude = when (lonAny) {
-                                    is Number -> lonAny.toDouble()
-                                    else -> 0.0
+                                
+                                val cachedLocs = cachedLocations.map { it.toLocation() }
+                                val cachedMap = cachedLocations.associate { it.id to it.cityId }
+                                withContext(Dispatchers.Main) {
+                                    locationsForMap = cachedLocs
+                                    locationCityIdMap = cachedMap
+                                    android.util.Log.d("MainActivity", "✅ Map locations loaded from cache: ${cachedLocs.size}, locationsForMap size: ${locationsForMap.size}")
                                 }
-                                val cityRef = locDoc.reference.parent.parent
-                                val cityId = cityRef?.id ?: ""
-                                val loc = Location(
-                                    id = locDoc.id,
-                                    name = data["name"] as? String ?: "",
-                                    description = data["description"] as? String ?: "",
-                                    category = data["category"] as? String ?: "",
-                                    latitude = latitude,
-                                    longitude = longitude,
-                                    imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                    createdBy = data["createdBy"] as? String ?: ""
-                                )
-                                allLocations.add(loc)
-                                idMap[locDoc.id] = cityId
+                            } else {
+                                android.util.Log.w("MainActivity", "⚠️ No cache available for map - database is empty!")
                             }
-                            locationsForMap = allLocations
-                            locationCityIdMap = idMap
+                        } catch (e: Exception) {
+                            android.util.Log.e("MainActivity", "❌ Error loading cache for map", e)
+                            e.printStackTrace()
                         }
+                    }
+                    
+                    // THEN: Try to sync with Firebase (optional, cache already loaded)
+                    repositoryScope.launch {
+                        try {
+                            locationRepository.getAllLocations().collect { locations ->
+                                val allEntities = database.locationDao().getAllLocationsSync()
+                                val idMap = allEntities.associate { it.id to it.cityId }
+                                locationsForMap = locations
+                                locationCityIdMap = idMap
+                                Log.d("MainActivity", "✅ Map locations updated: ${locations.size}")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Error syncing locations for map", e)
+                            // Keep cache if Firebase fails
+                        }
+                    }
+                }
+                
+                fun refreshLocations(onComplete: (Boolean) -> Unit = {}) {
+                    Log.d("MainActivity", "🔄 Manual refresh triggered")
+                    repositoryScope.launch {
+                        // First show cache if available (immediate feedback)
+                        val cachedLocations = database.locationDao().getAllLocationsSync()
+                        if (cachedLocations.isNotEmpty()) {
+                            Log.d("MainActivity", "📦 Showing ${cachedLocations.size} cached locations while refreshing...")
+                            val cachedLocs = cachedLocations.map { it.toLocation() }
+                            val cachedMap = cachedLocations.associate { it.id to it.cityId }
+                            locationsForMap = cachedLocs
+                            locationCityIdMap = cachedMap
+                        }
+                        
+                        // Then try to refresh from Firebase
+                        val state = locationRepository.refreshLocationsWithState()
+                        locationDataState = state
+                        when (state) {
+                            is LocationDataState.Success -> {
+                                val allEntities = database.locationDao().getAllLocationsSync()
+                                val idMap = allEntities.associate { it.id to it.cityId }
+                                locationsForMap = state.locations
+                                locationCityIdMap = idMap
+                                Log.d("MainActivity", "✅ Refresh successful: ${state.locations.size} locations")
+                                onComplete(true)
+                            }
+                            is LocationDataState.Error -> {
+                                // Use cached locations if Firebase fails
+                                state.cachedLocations?.let { cached ->
+                                    val allEntities = database.locationDao().getAllLocationsSync()
+                                    val idMap = allEntities.associate { it.id to it.cityId }
+                                    locationsForMap = cached
+                                    locationCityIdMap = idMap
+                                    Log.d("MainActivity", "📦 Refresh failed, using ${cached.size} cached locations")
+                                } ?: run {
+                                    // No cache - try to load from database one more time
+                                    val dbCache = database.locationDao().getAllLocationsSync()
+                                    if (dbCache.isNotEmpty()) {
+                                        val dbLocs = dbCache.map { it.toLocation() }
+                                        val dbMap = dbCache.associate { it.id to it.cityId }
+                                        locationsForMap = dbLocs
+                                        locationCityIdMap = dbMap
+                                        Log.d("MainActivity", "📦 Fallback: Using ${dbLocs.size} locations from database")
+                                    }
+                                }
+                                onComplete(false)
+                            }
+                            is LocationDataState.Loading -> {
+                                onComplete(false)
+                            }
+                        }
+                    }
                 }
 
                 fun fetchLocationsForCity(cityId: String) {
@@ -587,11 +665,130 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Listen to unread message count
+                DisposableEffect(isLoggedIn, currentUserId) {
+                    val userId = currentUserId
+                    if (isLoggedIn && userId != null) {
+                        val listener = firestore.collection("conversations")
+                            .whereArrayContains("participants", userId)
+                            .addSnapshotListener { snapshot, error ->
+                                if (error != null || snapshot == null) {
+                                    unreadMessageCount = 0
+                                    return@addSnapshotListener
+                                }
+                                
+                                var totalUnread = 0
+                                snapshot.documents.forEach { doc ->
+                                    val unreadCountMap = doc.get("unreadCounts") as? Map<*, *> ?: emptyMap<Any, Any>()
+                                    val unreadCount = (unreadCountMap[userId] as? Number)?.toInt() ?: 0
+                                    totalUnread += unreadCount
+                                }
+                                unreadMessageCount = totalUnread
+                            }
+                        
+                        onDispose {
+                            listener.remove()
+                        }
+                    } else {
+                        unreadMessageCount = 0
+                        onDispose {}
+                    }
+                }
+
+                // Load locations from cache and sync with Firebase on startup
+                LaunchedEffect(isLoggedIn) {
+                    android.util.Log.d("MainActivity", "🔵 LaunchedEffect triggered - isLoggedIn: $isLoggedIn")
+                    if (isLoggedIn) {
+                        android.util.Log.d("MainActivity", "🔵 User is logged in, loading cache...")
+                        // FIRST: Always try to load from cache immediately (works offline)
+                        repositoryScope.launch(Dispatchers.IO) {
+                            try {
+                                android.util.Log.d("MainActivity", "🔵 Starting cache query...")
+                                val cachedLocations = database.locationDao().getAllLocationsSync()
+                                android.util.Log.d("MainActivity", "🔵 Cache check complete - found ${cachedLocations.size} locations")
+                                
+                                // Log first few locations for debugging
+                                if (cachedLocations.isNotEmpty()) {
+                                    cachedLocations.take(3).forEach { entity ->
+                                        android.util.Log.d("MainActivity", "   - Cache item: ${entity.name} (id: ${entity.id}, cityId: ${entity.cityId})")
+                                    }
+                                }
+                                
+                                if (cachedLocations.isNotEmpty()) {
+                                    android.util.Log.d("MainActivity", "📦 Immediately loading ${cachedLocations.size} locations from CACHE")
+                                    val cachedLocs = cachedLocations.map { it.toLocation() }
+                                    val cachedMap = cachedLocations.associate { it.id to it.cityId }
+                                    withContext(Dispatchers.Main) {
+                                        locationsForMap = cachedLocs
+                                        locationCityIdMap = cachedMap
+                                        android.util.Log.d("MainActivity", "✅ Cache loaded into UI - ${cachedLocs.size} locations, map size: ${locationCityIdMap.size}")
+                                    }
+                                } else {
+                                    android.util.Log.w("MainActivity", "⚠️ No cache found on startup - cache is empty!")
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("MainActivity", "❌ Error loading cache", e)
+                                e.printStackTrace()
+                            }
+                        }
+                        
+                        // THEN: Try to sync with Firebase (will fail if offline, but cache is already loaded)
+                        repositoryScope.launch {
+                            Log.d("MainActivity", "🔵 Starting Firebase sync attempt...")
+                            try {
+                                locationRepository.getAllLocationsWithState().collect { state ->
+                                    Log.d("MainActivity", "🔵 Location state received: ${state::class.simpleName}")
+                                    locationDataState = state
+                                    when (state) {
+                                        is LocationDataState.Success -> {
+                                            val allEntities = database.locationDao().getAllLocationsSync()
+                                            val newMap = allEntities.associate { it.id to it.cityId }
+                                            locationsForMap = state.locations
+                                            locationCityIdMap = newMap
+                                            Log.d("MainActivity", "✅ Updated locations: ${state.locations.size} (fromCache: ${state.isFromCache})")
+                                        }
+                                        is LocationDataState.Error -> {
+                                            // Always use cached locations if available, even on error
+                                            state.cachedLocations?.let { cached ->
+                                                Log.d("MainActivity", "📦 Using ${cached.size} cached locations (Firebase unavailable)")
+                                                val allEntities = database.locationDao().getAllLocationsSync()
+                                                val newMap = allEntities.associate { it.id to it.cityId }
+                                                locationsForMap = cached
+                                                locationCityIdMap = newMap
+                                            } ?: run {
+                                                // No cache available - but we already loaded cache above, so keep it
+                                                Log.w("MainActivity", "⚠️ Firebase error, but keeping existing cache if available")
+                                                // Don't clear - keep what we have
+                                            }
+                                        }
+                                        is LocationDataState.Loading -> {
+                                            // Keep current data while loading
+                                            Log.d("MainActivity", "⏳ Loading locations...")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "❌ Error in location flow", e)
+                                // On error, make sure we at least have cache
+                                val cachedLocations = database.locationDao().getAllLocationsSync()
+                                if (cachedLocations.isNotEmpty() && locationsForMap.isEmpty()) {
+                                    Log.d("MainActivity", "📦 Fallback: Loading ${cachedLocations.size} locations from cache")
+                                    val cachedLocs = cachedLocations.map { it.toLocation() }
+                                    val cachedMap = cachedLocations.associate { it.id to it.cityId }
+                                    locationsForMap = cachedLocs
+                                    locationCityIdMap = cachedMap
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
                         BottomNavigationBar(
                             selectedDestination = currentTab,
+                            unreadMessageCount = unreadMessageCount,
                             onHomeClick = { currentTab = BottomNavDestination.HOME },
                             onMapClick = {
                                 fetchAllLocations()
@@ -713,11 +910,14 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.padding(innerPadding),
                                             cities = cities,
                                             onSignOut = {
+                                                android.util.Log.d("MainActivity", "🚪 Logging out - cache will remain in database")
                                                 auth.signOut()
                                                 currentScreen = AuthScreen.WELCOME
                                                 showAddCityScreen = false
                                                 selectedCityId = null
                                                 cities = emptyList()
+                                                locationsForMap = emptyList() // Clear UI state, but cache stays in DB
+                                                locationCityIdMap = emptyMap()
                                                 selectedChatId = null
                                                 selectedChatTitle = ""
                                                 currentTab = BottomNavDestination.HOME
@@ -732,7 +932,47 @@ class MainActivity : ComponentActivity() {
                                                 showMapViewScreen = true
                                             },
                                             onMessagesClick = { currentTab = BottomNavDestination.MESSAGES },
-                                            onProfileClick = { currentTab = BottomNavDestination.PROFILE }
+                                            onProfileClick = { currentTab = BottomNavDestination.PROFILE },
+                                            onRefreshLocations = {
+                                                // Check cache first and show info
+                                                repositoryScope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        android.util.Log.d("MainActivity", "🔄 Refresh button clicked - checking cache...")
+                                                        val cacheCount = database.locationDao().getLocationCount()
+                                                        android.util.Log.d("MainActivity", "🔄 Cache has $cacheCount locations")
+                                                        
+                                                        withContext(Dispatchers.Main) {
+                                                            if (cacheCount > 0) {
+                                                                Toast.makeText(context, "Cache: $cacheCount locaties. Vernieuwen...", Toast.LENGTH_LONG).show()
+                                                            } else {
+                                                                Toast.makeText(context, "Geen cache! Eerst met internet gebruiken.", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
+                                                        
+                                                        refreshLocations { success ->
+                                                            repositoryScope.launch(Dispatchers.IO) {
+                                                                if (success) {
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(context, "Locaties vernieuwd", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                } else {
+                                                                    val finalCacheCount = database.locationDao().getLocationCount()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        if (finalCacheCount > 0) {
+                                                                            Toast.makeText(context, "Gebruikt gecachte data ($finalCacheCount locaties)", Toast.LENGTH_LONG).show()
+                                                                        } else {
+                                                                            Toast.makeText(context, "Geen data beschikbaar", Toast.LENGTH_SHORT).show()
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.e("MainActivity", "❌ Error in refresh", e)
+                                                        e.printStackTrace()
+                                                    }
+                                                }
+                                            }
                                         )
                                     }
                                     BottomNavDestination.MESSAGES -> {
@@ -750,11 +990,14 @@ class MainActivity : ComponentActivity() {
                                             onMyCitiesClick = { currentTab = BottomNavDestination.HOME },
                                             onSettingsClick = { /* TODO */ },
                                             onLogoutClick = {
+                                                android.util.Log.d("MainActivity", "🚪 Logging out from profile - cache will remain in database")
                                                 auth.signOut()
                                                 currentScreen = AuthScreen.WELCOME
                                                 showAddCityScreen = false
                                                 selectedCityId = null
                                                 cities = emptyList()
+                                                locationsForMap = emptyList() // Clear UI state, but cache stays in DB
+                                                locationCityIdMap = emptyMap()
                                                 selectedChatId = null
                                                 selectedChatTitle = ""
                                                 currentTab = BottomNavDestination.HOME
