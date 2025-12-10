@@ -52,10 +52,9 @@ fun CityDetailsScreen(
     val isPreview = LocalInspectionMode.current
     var selectedCategory by remember { mutableStateOf("All") }
 
-    DisposableEffect(userId, city.id, city.createdBy, isPreview, onLocationAdded) {
+    DisposableEffect(userId, city.id, isPreview, onLocationAdded) {
         var listener: ListenerRegistration? = null
-        var cityOwnerListener: ListenerRegistration? = null
-        
+
         when {
             isPreview -> {
                 locations = previewLocations()
@@ -67,10 +66,8 @@ fun CityDetailsScreen(
             }
             else -> {
                 isLoading = true
-                val allLocations = mutableSetOf<String>() // Track unique location IDs
                 val locationMap = mutableMapOf<String, Location>()
-                
-                // Function to update locations list
+
                 fun updateLocationsList() {
                     val uniqueLocations = locationMap.values.toList().sortedByDescending { it.name }
                     locations = uniqueLocations
@@ -79,86 +76,34 @@ fun CityDetailsScreen(
                     }
                     isLoading = false
                 }
-                
-                // Use collectionGroup to get ALL locations for this cityId from ALL users
-                // This ensures that locations added by any user are visible to everyone viewing the city
+
                 listener = firestore.collectionGroup("locations")
-                    .whereEqualTo("cityId", city.id)
-                    .addSnapshotListener { snapshot, error ->
-                        if (error != null) {
-                            isLoading = false
-                            return@addSnapshotListener
-                        }
-                        
+                    .addSnapshotListener { snapshot, _ ->
+                        locationMap.clear()
                         snapshot?.documents?.forEach { doc ->
+                            val parentCityRef = doc.reference.parent.parent
+                            if (parentCityRef?.id != city.id) return@forEach
                             val data = doc.data ?: return@forEach
                             val locationId = doc.id
-                            
-                            // Verify that this location belongs to the correct city
-                            val locCityId = data["cityId"] as? String
-                            if (locCityId == city.id) {
-                                // Use locationId as unique key (should be unique within a city)
-                                val location = Location(
-                                    id = locationId,
-                                    name = data["name"] as? String ?: "",
-                                    imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                    category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                    description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                    latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                    longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                    createdBy = data["createdBy"] as? String ?: ""
-                                )
-                                
-                                // Use locationId as key - if same location exists from different users, last one wins
-                                locationMap[locationId] = location
-                                allLocations.add(locationId)
-                            }
+                            val location = Location(
+                                id = locationId,
+                                name = data["name"] as? String ?: "",
+                                imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
+                                category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
+                                longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
+                                createdBy = data["createdBy"] as? String ?: ""
+                            )
+                            locationMap[locationId] = location
                         }
                         updateLocationsList()
                     }
-                
-                // Also listen to locations from city owner as fallback
-                // This ensures we catch any locations that might not have cityId set correctly
-                cityOwnerListener = firestore.collection("users")
-                    .document(city.createdBy)
-                    .collection("cities")
-                    .document(city.id)
-                    .collection("locations")
-                    .addSnapshotListener { ownerSnapshot, ownerError ->
-                        if (ownerError == null) {
-                            ownerSnapshot?.documents?.forEach { doc ->
-                                val data = doc.data ?: return@forEach
-                                val locationId = doc.id
-                                
-                                // Only add if not already in map (to avoid duplicates from collectionGroup query)
-                                if (!locationMap.containsKey(locationId)) {
-                                    val locCityId = data["cityId"] as? String
-                                    // Add if cityId matches or is missing (for old locations without cityId)
-                                    if (locCityId == city.id || locCityId == null) {
-                                        val location = Location(
-                                            id = locationId,
-                                            name = data["name"] as? String ?: "",
-                                            imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                            category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                            description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                            latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                            longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                            createdBy = data["createdBy"] as? String ?: ""
-                                        )
-                                        locationMap[locationId] = location
-                                        allLocations.add(locationId)
-                                    }
-                                }
-                            }
-                            updateLocationsList()
-                        }
-                    }
             }
         }
-        
+
         onDispose {
             listener?.remove()
-            cityOwnerListener?.remove()
         }
     }
 

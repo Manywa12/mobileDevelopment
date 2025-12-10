@@ -78,6 +78,7 @@
     <string name="title_messages">Berichten</string>
     <string name="search_placeholder">Zoeken...</string>
     <string name="cd_clear_search">Zoekveld wissen</string>
+    <string name="start_chat_hint">Klik op het + icoon om een nieuw bericht te sturen</string>
     <string name="start_chat_conversation">Start een chatgesprek</string>
     <string name="no_messages_yet">Nog geen berichten. Start het gesprek!</string>
 
@@ -131,6 +132,11 @@
     <string name="new_chat">Nieuw gesprek</string>
     <string name="message_user">Bericht sturen</string>
     <string name="published_by">Gepubliceerd door</string>
+    <string name="cd_muted">Gesprek gedempt</string>
+    <string name="cd_read">Bericht gelezen</string>
+    <string name="cd_unread_count">Aantal ongelezen berichten</string>
+    <string name="cd_online_status">Online status</string>
+    <string name="cd_more_options">Meer opties</string>
     <string name="error_city_already_exists">Een stad met deze naam bestaat al</string>
     <string name="error_location_already_exists">Een locatie met deze naam bestaat al in deze stad</string>
 </resources>
