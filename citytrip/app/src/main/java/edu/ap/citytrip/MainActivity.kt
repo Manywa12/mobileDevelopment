@@ -54,6 +54,8 @@ import edu.ap.citytrip.data.AppDatabase
 import edu.ap.citytrip.data.LocationRepository
 import edu.ap.citytrip.data.LocationEntity
 import edu.ap.citytrip.data.LocationDataState
+import edu.ap.citytrip.data.CityEntity
+import edu.ap.citytrip.utils.ImageCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 val firestore = remember { FirebaseFirestore.getInstance() }
                 val storage = remember { FirebaseStorage.getInstance() }
                 val database = remember { AppDatabase.getDatabase(context) }
-                val locationRepository = remember { LocationRepository(database.locationDao(), firestore) }
+                val locationRepository = remember { LocationRepository(database.locationDao(), database.reviewDao(), firestore) }
                 val repositoryScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
                 var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
                 var currentScreen by remember { mutableStateOf(AuthScreen.WELCOME) }
@@ -97,6 +99,68 @@ class MainActivity : ComponentActivity() {
                 var locationDataState by remember { mutableStateOf<LocationDataState>(LocationDataState.Loading()) }
                 var selectedCityId by rememberSaveable { mutableStateOf<String?>(null) }
                 var selectedLocation by remember { mutableStateOf<Location?>(null) }
+                
+                // Load cache immediately on app startup (before login)
+                LaunchedEffect(Unit) {
+                    android.util.Log.d("MainActivity", "🚀🚀🚀 APP STARTED - Loading cache immediately (NO LOGIN REQUIRED)...")
+                    repositoryScope.launch(Dispatchers.IO) {
+                        try {
+                            android.util.Log.d("MainActivity", "📦📦📦 Loading cache on startup...")
+                            
+                            // Load cities from cache
+                            val cachedCities = database.cityDao().getAllCitiesSync()
+                            android.util.Log.d("MainActivity", "📦📦📦 Found ${cachedCities.size} cached cities on startup")
+                            
+                            // Load locations from cache
+                            val cachedLocations = database.locationDao().getAllLocationsSync()
+                            android.util.Log.d("MainActivity", "📦📦📦 Found ${cachedLocations.size} cached locations on startup")
+                            
+                            // Also check reviews cache
+                            val cachedReviews = database.reviewDao().getAllReviewsSync()
+                            android.util.Log.d("MainActivity", "📦📦📦 Found ${cachedReviews.size} cached reviews on startup")
+                            
+                            withContext(Dispatchers.Main) {
+                                // Load cities from cache
+                                if (cachedCities.isNotEmpty()) {
+                                    val citiesList = cachedCities.map { it.toCity() }
+                                    // Update localityCount based on cached locations
+                                    val citiesWithCounts = citiesList.map { city ->
+                                        val count = cachedLocations.count { it.cityId == city.id }
+                                        city.copy(localityCount = count)
+                                    }
+                                    cities = citiesWithCounts
+                                    android.util.Log.d("MainActivity", "✅✅✅ CITIES LOADED FROM CACHE - ${citiesWithCounts.size} cities available (OFFLINE READY!)")
+                                    
+                                    // Prefetch city images
+                                    val cityImageUrls = citiesWithCounts.map { it.imageUrl }
+                                    ImageCache.prefetchImages(context, cityImageUrls)
+                                } else {
+                                    android.util.Log.w("MainActivity", "⚠️ No cached cities found")
+                                }
+                                
+                                // Load locations from cache
+                                if (cachedLocations.isNotEmpty()) {
+                                    val cachedLocs = cachedLocations.map { it.toLocation() }
+                                    val cachedMap = cachedLocations.associate { it.id to it.cityId }
+                                    locationsForMap = cachedLocs
+                                    locationCityIdMap = cachedMap
+                                    android.util.Log.d("MainActivity", "✅✅✅ LOCATIONS LOADED FROM CACHE - ${cachedLocs.size} locations available (OFFLINE READY!)")
+                                    
+                                    // Prefetch location images
+                                    val locationImageUrls = cachedLocs.map { it.imageUrl }
+                                    ImageCache.prefetchImages(context, locationImageUrls)
+                                } else {
+                                    android.util.Log.w("MainActivity", "⚠️ No cached locations found")
+                                }
+                                
+                                android.util.Log.d("MainActivity", "✅✅✅ Reviews cache: ${cachedReviews.size} reviews available")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("MainActivity", "❌❌❌ ERROR loading cache on startup", e)
+                            e.printStackTrace()
+                        }
+                    }
+                }
                 var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
                 var selectedChatTitle by remember { mutableStateOf("") }
                 var currentTab by rememberSaveable { mutableStateOf(BottomNavDestination.HOME) }
@@ -145,6 +209,17 @@ class MainActivity : ComponentActivity() {
                                                 all.addAll(citiesLoaded)
                                                 cities = all
                                                 
+                                                // Cache cities in Room database
+                                                repositoryScope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        val cityEntities = all.map { CityEntity.fromCity(it) }
+                                                        database.cityDao().insertAll(cityEntities)
+                                                        android.util.Log.d("MainActivity", "💾 Cached ${cityEntities.size} cities from fallback")
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.e("MainActivity", "Error caching cities from fallback", e)
+                                                    }
+                                                }
+                                                
                                                 val userId = auth.currentUser?.uid
                                                 citiesLoaded.forEach { city ->
                                                     firestore.collectionGroup("locations")
@@ -189,6 +264,18 @@ class MainActivity : ComponentActivity() {
                                 
                                 if (loadedCities.isNotEmpty()) {
                                     cities = loadedCities
+                                    
+                                    // Cache cities in Room database
+                                    repositoryScope.launch(Dispatchers.IO) {
+                                        try {
+                                            val cityEntities = loadedCities.map { CityEntity.fromCity(it) }
+                                            database.cityDao().insertAll(cityEntities)
+                                            android.util.Log.d("MainActivity", "💾💾💾 Cached ${cityEntities.size} cities in Room database")
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("MainActivity", "Error caching cities", e)
+                                        }
+                                    }
+                                    
                                     loadedCities.forEach { city ->
                                         firestore.collectionGroup("locations")
                                             .get()

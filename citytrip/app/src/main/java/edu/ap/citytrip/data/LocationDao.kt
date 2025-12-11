@@ -11,6 +11,9 @@ interface LocationDao {
     @Query("SELECT * FROM locations WHERE cityId = :cityId")
     fun getLocationsByCityId(cityId: String): Flow<List<LocationEntity>>
     
+    @Query("SELECT * FROM locations WHERE cityId = :cityId")
+    suspend fun getLocationsByCityIdSync(cityId: String): List<LocationEntity>
+    
     @Query("SELECT * FROM locations")
     suspend fun getAllLocationsSync(): List<LocationEntity>
     

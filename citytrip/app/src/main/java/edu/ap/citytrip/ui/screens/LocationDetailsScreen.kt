@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import edu.ap.citytrip.utils.ImageCache
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -36,7 +38,10 @@ import edu.ap.citytrip.R
 import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.data.Review
 import edu.ap.citytrip.ui.screens.Message.ConversationScreen
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,6 +56,14 @@ fun LocationDetailsScreen(
     var showAddRatingPopup by remember { mutableStateOf(false) }
     val firestore = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
+    val database = remember(context) { edu.ap.citytrip.data.AppDatabase.getDatabase(context) }
+    val locationRepository = remember(database, firestore) { 
+        edu.ap.citytrip.data.LocationRepository(
+            database.locationDao(), 
+            database.reviewDao(), 
+            firestore
+        ) 
+    }
     var distance by remember { mutableStateOf<Float?>(null) }
     var address by remember { mutableStateOf<String?>(null) }
     var isLoadingAddress by remember { mutableStateOf(false) }
@@ -68,6 +81,7 @@ fun LocationDetailsScreen(
     var isLoadingCreatorInfo by remember { mutableStateOf(false) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val reviewScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
 
     // Load distance and reviews
     LaunchedEffect(location, cityId, reloadReviewsTrigger) {
@@ -82,9 +96,25 @@ fun LocationDetailsScreen(
                 }
             }
         } catch (e: SecurityException) {
-            // Handle missing location permissions
+// Handle missing location permissions
         }
 
+        // FIRST: Load reviews from cache (works offline)
+        reviewScope.launch(Dispatchers.IO) {
+            try {
+                val cachedReviews = locationRepository.getReviewsForLocation(location.id)
+                if (cachedReviews.isNotEmpty()) {
+                    android.util.Log.d("LocationDetails", "📦 Loaded ${cachedReviews.size} reviews from cache")
+                    withContext(Dispatchers.Main) {
+                        reviews = cachedReviews
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LocationDetails", "Error loading reviews from cache", e)
+            }
+        }
+
+        // THEN: Try to load from Firebase and update cache
         // Load reviews - try multiple paths where the location might be stored
         val allReviews = mutableListOf<Review>()
         var completed = 0
@@ -156,7 +186,22 @@ fun LocationDetailsScreen(
                             // Remove duplicates based on review ID
                             val uniqueReviews = allReviews.distinctBy { it.id }
                             android.util.Log.d("LocationDetails", "Total unique reviews: ${uniqueReviews.size}")
-                            reviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                            val sortedReviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                            reviews = sortedReviews
+                            
+                            // Cache the reviews using repository
+                            if (sortedReviews.isNotEmpty()) {
+                                reviewScope.launch(Dispatchers.IO) {
+                                    try {
+                                        locationRepository.cacheReviewsForLocation(location.id, sortedReviews)
+                                        android.util.Log.d("LocationDetails", "✅ Reviews cached successfully")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("LocationDetails", "Error caching reviews", e)
+                                    }
+                                }
+                            } else {
+                                android.util.Log.d("LocationDetails", "⚠️ No reviews to cache (0 reviews found)")
+                            }
                         }
                     }
                     .addOnFailureListener { e ->
@@ -164,7 +209,41 @@ fun LocationDetailsScreen(
                         completed++
                         if (completed == total) {
                             val uniqueReviews = allReviews.distinctBy { it.id }
-                            reviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                            val sortedReviews = uniqueReviews.sortedByDescending { it.createdAt?.time ?: 0L }
+                            
+                            // If Firebase failed but we have cache, keep cache
+                            if (sortedReviews.isEmpty()) {
+                                // Try to reload from cache as fallback
+                                reviewScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val cachedReviews = locationRepository.getReviewsForLocation(location.id)
+                                        withContext(Dispatchers.Main) {
+                                            if (cachedReviews.isNotEmpty()) {
+                                                reviews = cachedReviews
+                                                android.util.Log.d("LocationDetails", "📦 Fallback: Using ${cachedReviews.size} cached reviews")
+                                            } else {
+                                                reviews = emptyList()
+                                                android.util.Log.d("LocationDetails", "⚠️ No reviews available (Firebase failed, no cache)")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("LocationDetails", "Error in fallback cache load", e)
+                                        withContext(Dispatchers.Main) {
+                                            reviews = emptyList()
+                                        }
+                                    }
+                                }
+                            } else {
+                                reviews = sortedReviews
+                                // Cache the reviews we got
+                                reviewScope.launch(Dispatchers.IO) {
+                                    try {
+                                        locationRepository.cacheReviewsForLocation(location.id, sortedReviews)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("LocationDetails", "Error caching reviews", e)
+                                    }
+                                }
+                            }
                         }
                     }
             }
@@ -306,8 +385,10 @@ fun LocationDetailsScreen(
                         .fillMaxWidth()
                         .height(250.dp)
                 ) {
-                    Image(
-                        painter = rememberAsyncImagePainter(location.imageUrl),
+                    val imageLoader = remember { ImageCache.getImageLoader(context) }
+                    AsyncImage(
+                        model = ImageCache.createImageRequest(context, location.imageUrl),
+                        imageLoader = imageLoader,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

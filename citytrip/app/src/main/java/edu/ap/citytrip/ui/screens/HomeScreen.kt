@@ -34,6 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import edu.ap.citytrip.ui.theme.CitytripTheme
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
+import edu.ap.citytrip.utils.ImageCache
+import androidx.compose.ui.platform.LocalContext
 
 enum class BottomNavDestination {
     HOME, MAP, MESSAGES, PROFILE
@@ -131,11 +135,21 @@ fun CityCard(
         Box(modifier = Modifier.fillMaxSize()) {
             // Show image if available, otherwise show placeholder
             if (!city.imageUrl.isNullOrBlank()) {
+                val context = LocalContext.current
+                val imageLoader = remember { ImageCache.getImageLoader(context) }
                 AsyncImage(
-                    model = city.imageUrl,
+                    model = ImageCache.createImageRequest(context, city.imageUrl),
+                    imageLoader = imageLoader,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    onError = { 
+                        android.util.Log.d("HomeScreen", "ℹ️ Image not in cache yet (must load with WiFi first): ${city.imageUrl}")
+                        // Image will show placeholder instead - this is expected if image was never loaded before
+                    },
+                    onSuccess = {
+                        android.util.Log.d("HomeScreen", "✅ City image loaded: ${city.imageUrl}")
+                    }
                 )
             } else {
                 // Placeholder voor stad afbeelding

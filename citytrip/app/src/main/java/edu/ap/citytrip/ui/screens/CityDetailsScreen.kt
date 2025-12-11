@@ -27,12 +27,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import edu.ap.citytrip.utils.ImageCache
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import edu.ap.citytrip.R
 import edu.ap.citytrip.data.City
 import edu.ap.citytrip.data.Location
 import edu.ap.citytrip.ui.theme.CitytripTheme
+import edu.ap.citytrip.data.AppDatabase
+import edu.ap.citytrip.data.LocationEntity
+import android.util.Log
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +59,10 @@ fun CityDetailsScreen(
     onLocationClick: (Location) -> Unit = {},
     onLocationAdded: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val firestore = remember { FirebaseFirestore.getInstance() }
+    val database = remember { AppDatabase.getDatabase(context) }
+    val repositoryScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
     var locations by remember { mutableStateOf<List<Location>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val isPreview = LocalInspectionMode.current
@@ -77,27 +93,118 @@ fun CityDetailsScreen(
                     isLoading = false
                 }
 
-                listener = firestore.collectionGroup("locations")
-                    .addSnapshotListener { snapshot, _ ->
-                        locationMap.clear()
-                        snapshot?.documents?.forEach { doc ->
-                            val parentCityRef = doc.reference.parent.parent
-                            if (parentCityRef?.id != city.id) return@forEach
-                            val data = doc.data ?: return@forEach
-                            val locationId = doc.id
-                            val location = Location(
-                                id = locationId,
-                                name = data["name"] as? String ?: "",
-                                imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                                category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
-                                latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
-                                longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
-                                createdBy = data["createdBy"] as? String ?: ""
-                            )
-                            locationMap[locationId] = location
+                // FIRST: Load from cache immediately (works offline)
+                repositoryScope.launch(Dispatchers.IO) {
+                    try {
+                        Log.d("CityDetailsScreen", "🏙️ Loading locations for city ${city.id} from cache...")
+                        // Use direct sync method for this city
+                        val cachedForCity = database.locationDao().getLocationsByCityIdSync(city.id)
+                        
+                        if (cachedForCity.isNotEmpty()) {
+                            Log.d("CityDetailsScreen", "📦 Found ${cachedForCity.size} cached locations for city ${city.id}")
+                            val cachedLocs = cachedForCity.map { it.toLocation() }
+                            withContext(Dispatchers.Main) {
+                                cachedLocs.forEach { loc ->
+                                    locationMap[loc.id] = loc
+                                }
+                                updateLocationsList()
+                                isLoading = false
+                                Log.d("CityDetailsScreen", "✅ Cache loaded into UI - ${cachedLocs.size} locations visible")
+                            }
+                        } else {
+                            Log.d("CityDetailsScreen", "⚠️ No cache found for city ${city.id}")
+                            withContext(Dispatchers.Main) {
+                                isLoading = false
+                            }
                         }
-                        updateLocationsList()
+                    } catch (e: Exception) {
+                        Log.e("CityDetailsScreen", "❌ Error loading cache", e)
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            isLoading = false
+                        }
+                    }
+                }
+
+                // THEN: Try to sync with Firebase (will fail if offline, but cache is already loaded)
+                listener = firestore.collectionGroup("locations")
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) {
+                            Log.w("CityDetailsScreen", "⚠️ Firebase error for city ${city.id}, keeping cache: ${error.message}")
+                            // Don't clear locationMap - keep cache that was already loaded
+                            // Only update if we have no locations yet
+                            if (locationMap.isEmpty()) {
+                                // Try to reload from cache as fallback
+                                repositoryScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val allCached = database.locationDao().getAllLocationsSync()
+                                        val cachedForCity = allCached.filter { it.cityId == city.id }
+                                        if (cachedForCity.isNotEmpty()) {
+                                            val cachedLocs = cachedForCity.map { it.toLocation() }
+                                            withContext(Dispatchers.Main) {
+                                                cachedLocs.forEach { loc ->
+                                                    locationMap[loc.id] = loc
+                                                }
+                                                updateLocationsList()
+                                                Log.d("CityDetailsScreen", "📦 Fallback: Loaded ${cachedLocs.size} locations from cache")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("CityDetailsScreen", "Error in fallback cache load", e)
+                                    }
+                                }
+                            }
+                            return@addSnapshotListener
+                        }
+                        
+                        // Only clear and update if we got valid data from Firebase
+                        if (snapshot != null && !snapshot.isEmpty) {
+                            val newLocationMap = mutableMapOf<String, Location>()
+                            snapshot.documents.forEach { doc ->
+                                val parentCityRef = doc.reference.parent.parent
+                                if (parentCityRef?.id != city.id) return@forEach
+                                val data = doc.data ?: return@forEach
+                                val locationId = doc.id
+                                // Parse createdAt from Firebase timestamp
+                                val createdAtTimestamp = data["createdAt"] as? Timestamp
+                                val createdAt = createdAtTimestamp?.toDate()
+                                
+                                val location = Location(
+                                    id = locationId,
+                                    name = data["name"] as? String ?: "",
+                                    imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
+                                    category = (data["category"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                    description = (data["description"] as? String)?.takeIf { it.isNotBlank() } ?: "",
+                                    latitude = ((data["latitude"] as? Number)?.toDouble()) ?: 0.0,
+                                    longitude = ((data["longitude"] as? Number)?.toDouble()) ?: 0.0,
+                                    createdBy = data["createdBy"] as? String ?: "",
+                                    createdAt = createdAt
+                                )
+                                newLocationMap[locationId] = location
+                                
+                                // Update cache
+                                repositoryScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val entity = LocationEntity.fromLocation(location, city.id)
+                                        database.locationDao().insert(entity)
+                                    } catch (e: Exception) {
+                                        Log.e("CityDetailsScreen", "Error caching location", e)
+                                    }
+                                }
+                            }
+                            
+                            // Only update if we got new data
+                            if (newLocationMap.isNotEmpty()) {
+                                locationMap.clear()
+                                locationMap.putAll(newLocationMap)
+                                updateLocationsList()
+                                Log.d("CityDetailsScreen", "✅ Updated locations from Firebase: ${locationMap.size} for city ${city.id}")
+                            } else {
+                                Log.d("CityDetailsScreen", "⚠️ Firebase returned empty for city ${city.id}, keeping cache")
+                            }
+                        } else {
+                            Log.d("CityDetailsScreen", "⚠️ Firebase snapshot is null or empty, keeping cache")
+                        }
                     }
             }
         }
@@ -239,8 +346,11 @@ private fun HeaderCard(city: City) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (!city.imageUrl.isNullOrBlank()) {
+                val context = LocalContext.current
+                val imageLoader = remember { ImageCache.getImageLoader(context) }
                 AsyncImage(
-                    model = city.imageUrl,
+                    model = ImageCache.createImageRequest(context, city.imageUrl),
+                    imageLoader = imageLoader,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -341,8 +451,11 @@ private fun LocationCard(
                     .height(160.dp)
             ) {
                 if (!location.imageUrl.isNullOrBlank()) {
+                    val context = LocalContext.current
+                    val imageLoader = remember { ImageCache.getImageLoader(context) }
                     AsyncImage(
-                        model = location.imageUrl,
+                        model = ImageCache.createImageRequest(context, location.imageUrl),
+                        imageLoader = imageLoader,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

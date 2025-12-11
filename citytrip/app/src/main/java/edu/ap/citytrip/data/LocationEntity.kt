@@ -2,6 +2,7 @@ package edu.ap.citytrip.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.Date
 
 @Entity(tableName = "locations")
 data class LocationEntity(
@@ -14,6 +15,7 @@ data class LocationEntity(
     val longitude: Double,
     val imageUrl: String?,
     val createdBy: String,
+    val createdAt: Date?,
     val cityId: String, // Added for mapping locations to cities
     val lastUpdated: Long = System.currentTimeMillis()
 ) {
@@ -26,7 +28,8 @@ data class LocationEntity(
             latitude = latitude,
             longitude = longitude,
             imageUrl = imageUrl,
-            createdBy = createdBy
+            createdBy = createdBy,
+            createdAt = createdAt
         )
     }
     
@@ -41,6 +44,7 @@ data class LocationEntity(
                 longitude = location.longitude,
                 imageUrl = location.imageUrl,
                 createdBy = location.createdBy,
+                createdAt = location.createdAt,
                 cityId = cityId,
                 lastUpdated = System.currentTimeMillis()
             )

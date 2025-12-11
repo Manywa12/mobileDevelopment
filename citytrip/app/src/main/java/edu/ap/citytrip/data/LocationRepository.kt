@@ -1,6 +1,7 @@
 package edu.ap.citytrip.data
 
 import android.util.Log
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 
 class LocationRepository(
     private val locationDao: LocationDao,
+    private val reviewDao: ReviewDao,
     private val firestore: FirebaseFirestore
 ) {
     /**
@@ -176,6 +178,10 @@ class LocationRepository(
             val cityRef = locDoc.reference.parent.parent
             val cityId = cityRef?.id ?: ""
             
+            // Parse createdAt from Firebase timestamp
+            val createdAtTimestamp = data["createdAt"] as? Timestamp
+            val createdAt = createdAtTimestamp?.toDate()
+            
             val location = Location(
                 id = locDoc.id,
                 name = data["name"] as? String ?: "",
@@ -184,7 +190,8 @@ class LocationRepository(
                 latitude = latitude,
                 longitude = longitude,
                 imageUrl = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() },
-                createdBy = data["createdBy"] as? String ?: ""
+                createdBy = data["createdBy"] as? String ?: "",
+                createdAt = createdAt
             )
             
             allLocations.add(Pair(location, cityId))
@@ -197,9 +204,15 @@ class LocationRepository(
                 LocationEntity.fromLocation(location, cityId)
             }
             locationDao.insertAll(entities)
-            Log.d("LocationRepository", "💾 Cached ${entities.size} locations in Room database")
+            Log.d("LocationRepository", "💾💾💾 Cached ${entities.size} locations in Room database (PERSISTENT - survives app restart!)")
+            
+            // Also cache reviews for each location
+            cacheReviewsForLocations(allLocations.map { it.first })
         } else {
             Log.w("LocationRepository", "⚠️ Firebase returned 0 locations - keeping existing cache (not overwriting)")
+            // Check what we have in cache
+            val existingCache = locationDao.getAllLocationsSync()
+            Log.d("LocationRepository", "📦 Existing cache has ${existingCache.size} locations (preserved)")
         }
         
         // Return locations (or empty if Firebase had none)
@@ -211,6 +224,76 @@ class LocationRepository(
      */
     suspend fun getCachedLocationCount(): Int = withContext(Dispatchers.IO) {
         locationDao.getLocationCount()
+    }
+    
+    /**
+     * Cache reviews for locations
+     */
+    private suspend fun cacheReviewsForLocations(locations: List<Location>) = withContext(Dispatchers.IO) {
+        val allReviews = mutableListOf<ReviewEntity>()
+        
+        locations.forEach { location ->
+            try {
+                // Try to find reviews for this location
+                // Reviews can be in multiple paths, so we try collectionGroup
+                val reviewsSnapshot = firestore.collectionGroup("reviews")
+                    .whereEqualTo("locationId", location.id)
+                    .get()
+                    .await()
+                
+                reviewsSnapshot.documents.forEach { reviewDoc ->
+                    val data = reviewDoc.data ?: return@forEach
+                    val createdAtTimestamp = data["createdAt"] as? Timestamp
+                    val createdAt = createdAtTimestamp?.toDate()
+                    
+                    val review = Review(
+                        id = reviewDoc.id,
+                        rating = (data["rating"] as? Number)?.toFloat() ?: 0f,
+                        comment = data["comment"] as? String ?: "",
+                        userId = data["userId"] as? String ?: "",
+                        userName = data["userName"] as? String ?: "User",
+                        createdAt = createdAt
+                    )
+                    
+                    allReviews.add(ReviewEntity.fromReview(review, location.id))
+                }
+            } catch (e: Exception) {
+                Log.w("LocationRepository", "Error fetching reviews for location ${location.id}: ${e.message}")
+                // Continue with other locations
+            }
+        }
+        
+        if (allReviews.isNotEmpty()) {
+            reviewDao.insertAll(allReviews)
+            Log.d("LocationRepository", "💾 Cached ${allReviews.size} reviews in Room database")
+        }
+    }
+    
+    /**
+     * Get reviews for a location (from cache first, then Firebase)
+     * Note: Reviews are subcollections, not a collectionGroup with locationId field
+     * This method only returns cached reviews - Firebase fetching is done in LocationDetailsScreen
+     */
+    suspend fun getReviewsForLocation(locationId: String): List<Review> = withContext(Dispatchers.IO) {
+        // Only return cached reviews - Firebase fetching happens in LocationDetailsScreen
+        val cached = reviewDao.getReviewsByLocationIdSync(locationId)
+        if (cached.isNotEmpty()) {
+            Log.d("LocationRepository", "📦 Found ${cached.size} cached reviews for location $locationId")
+        } else {
+            Log.d("LocationRepository", "⚠️ No cached reviews found for location $locationId")
+        }
+        cached.map { it.toReview() }
+    }
+    
+    /**
+     * Cache reviews for a location (called from LocationDetailsScreen when reviews are loaded)
+     */
+    suspend fun cacheReviewsForLocation(locationId: String, reviews: List<Review>) = withContext(Dispatchers.IO) {
+        if (reviews.isNotEmpty()) {
+            val entities = reviews.map { ReviewEntity.fromReview(it, locationId) }
+            reviewDao.insertAll(entities)
+            Log.d("LocationRepository", "💾 Cached ${entities.size} reviews for location $locationId")
+        }
     }
 }
 
