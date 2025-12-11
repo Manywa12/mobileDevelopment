@@ -2,8 +2,11 @@ package edu.ap.citytrip.ui.screens
 
 import android.Manifest
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +61,8 @@ fun AddLocationScreen(
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var showCategoryMenu by remember { mutableStateOf(false) }
     var duplicateError by remember { mutableStateOf<String?>(null) }
+    var showPhotoChoiceDialog by remember { mutableStateOf(false) }
+    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
     val context = LocalContext.current
     var latitude by remember { mutableStateOf(0.0) }
     var longitude by remember { mutableStateOf(0.0) }
@@ -104,6 +109,96 @@ fun AddLocationScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         imageUri = uri
+    }
+
+    // Function to create a temporary file URI for camera photos
+    fun createImageUri(): Uri? {
+        return try {
+            // Ensure the cache directory exists
+            val cacheDir = context.cacheDir
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs()
+            }
+            
+            // Create a unique filename
+            val imageFile = File(cacheDir, "camera_photo_${System.currentTimeMillis()}.jpg")
+            
+            // Don't create the file here - let the camera app create it
+            // Just ensure parent directory exists
+            val parentDir = imageFile.parentFile
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs()
+            }
+            
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                imageFile
+            )
+        } catch (e: Exception) {
+            Log.e("AddLocationScreen", "Error creating image file URI", e)
+            null
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri = cameraImageUri // Store in local variable for smart cast
+        if (success && uri != null) {
+            try {
+                // Extract file path from URI and verify it exists
+                val filePath = uri.path
+                if (filePath != null) {
+                    val file = File(filePath)
+                    if (file.exists() && file.length() > 0) {
+                        imageUri = uri
+                        Log.d("AddLocationScreen", "Camera photo saved successfully: ${file.absolutePath}, size: ${file.length()} bytes")
+                    } else {
+                        Log.e("AddLocationScreen", "Camera photo file is missing or empty: ${file.absolutePath}")
+                        Toast.makeText(
+                            context,
+                            "Foto kon niet worden opgeslagen",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else {
+                    // If we can't extract path, try to use URI anyway
+                    imageUri = uri
+                    Log.d("AddLocationScreen", "Using camera URI without path verification")
+                }
+            } catch (e: Exception) {
+                Log.e("AddLocationScreen", "Error verifying camera photo", e)
+                // Try to use the URI anyway
+                imageUri = uri
+            }
+        } else {
+            Log.d("AddLocationScreen", "Camera photo capture cancelled or failed")
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val uri = createImageUri()
+            if (uri != null) {
+                cameraImageUri = uri
+                cameraLauncher.launch(uri)
+            } else {
+                Toast.makeText(
+                    context,
+                    "Fout bij het aanmaken van foto bestand",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } else {
+            Toast.makeText(
+                context,
+                context.getString(R.string.camera_permission_required),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     Scaffold(
@@ -386,7 +481,7 @@ fun AddLocationScreen(
                     .border(1.dp, Color.LightGray, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Gray.copy(alpha = 0.1f))
-                    .clickable { imagePickerLauncher.launch("image/*") },
+                    .clickable { showPhotoChoiceDialog = true },
                 contentAlignment = Alignment.Center
             ) {
                 if (imageUri != null) {
@@ -408,6 +503,47 @@ fun AddLocationScreen(
                         Text(stringResource(R.string.tap_to_select_image), color = Color.Gray)
                     }
                 }
+            }
+
+            // Photo choice dialog
+            if (showPhotoChoiceDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPhotoChoiceDialog = false },
+                    title = {
+                        Text(stringResource(R.string.photo_choice_dialog_title))
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    showPhotoChoiceDialog = false
+                                    imagePickerLauncher.launch("image/*")
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.photo_choice_upload))
+                            }
+                            TextButton(
+                                onClick = {
+                                    showPhotoChoiceDialog = false
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.photo_choice_camera))
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = { showPhotoChoiceDialog = false }) {
+                            Text(stringResource(R.string.photo_choice_cancel))
+                        }
+                    }
+                )
             }
             Spacer(modifier = Modifier.height(32.dp))
 

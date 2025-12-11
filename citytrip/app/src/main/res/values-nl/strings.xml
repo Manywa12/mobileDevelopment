@@ -99,6 +99,11 @@
     <string name="upload_photo_label">Foto uploaden</string>
     <string name="choose_file_button">Kies bestand</string>
     <string name="save_location_button">Locatie opslaan</string>
+    <string name="photo_choice_dialog_title">Foto toevoegen</string>
+    <string name="photo_choice_upload">Foto uploaden</string>
+    <string name="photo_choice_camera">Foto maken</string>
+    <string name="photo_choice_cancel">Annuleren</string>
+    <string name="camera_permission_required">Camera toestemming is vereist om foto\'s te maken</string>
 
     <!-- Map View Screen -->
     <string name="map_view_title">Kaartweergave</string>
